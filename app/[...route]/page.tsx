@@ -1,4 +1,2 @@
-import App from '../page';
-export default function RoutePage() { return <App />; }
-
-
+import { Prototype } from '../../components/prototype';
+export default function Page(){return <Prototype/>}

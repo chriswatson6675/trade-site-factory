@@ -1,0 +1,15 @@
+export type Status = 'new'|'contacted'|'quoted'|'won'|'lost';
+export type Project = {id:string;businessId:string;slug:string;title:string;service:string;location:string;description:string;published:boolean;images:string[]};
+export type Enquiry = {id:string;businessId:string;reference:string;name:string;mobile:string;location:string;work:string;storeys:string;access:string;width:string;description:string;photos:string[];status:Status};
+export const slugify=(v:string)=>v.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+export const normalisePhone=(v:string)=>v.replace(/[^0-9]/g,'').replace(/^00/,'').replace(/^0/,'44');
+export const whatsAppUrl=(phone:string,message:string)=>`https://wa.me/${normalisePhone(phone)}?text=${encodeURIComponent(message)}`;
+export const list=(items:string[])=>items.length<2?items[0]||'':items.length===2?items.join(' and '):`${items.slice(0,-1).join(', ')} and ${items.at(-1)}`;
+export const businessCopy=(years?:number,services:string[]=[],areas:string[]=[])=>{const subject=services.length?list(services):'scaffolding services';const where=areas.length?` throughout ${list(areas)}`:'';return years?`With more than ${years} years’ experience, we provide ${subject}${where}.`:`We provide ${subject}${where}.`};
+export const validEnquiry=(e:Partial<Enquiry>)=>Boolean(e.name&&e.mobile&&e.location&&e.work&&e.storeys&&e.access&&e.width&&e.description);
+export const nextReference=(items:Enquiry[])=>`Q-${1001+items.length}`;
+const transitions:Record<Status,Status[]>={new:['contacted','lost'],contacted:['quoted','lost'],quoted:['won','lost'],won:[],lost:[]};
+export const canTransition=(from:Status,to:Status)=>from===to||transitions[from].includes(to);
+export const imageValid=(file:File)=>file.type.startsWith('image/')&&file.size<=10_000_000;
+export const publicProjects=(projects:Project[],businessId:string)=>projects.filter(p=>p.businessId===businessId&&p.published);
+export const projectBySlug=(projects:Project[],businessId:string,slug:string)=>publicProjects(projects,businessId).find(p=>p.slug===slug);
