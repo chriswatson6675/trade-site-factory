@@ -1,2 +1,2 @@
-import { Prototype } from '../components/prototype';
-export default function Page(){return <Prototype/>}
+import { CompletionApp } from '../components/completion-app';
+export default function Page(){return <CompletionApp/>}
