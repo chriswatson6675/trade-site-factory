@@ -1,3 +1,8 @@
+-- SUPERSEDED — kept for historical reference only.
+-- The real, applied schema is supabase/migrations/*.sql (RLS included).
+-- Do not run this file: table/column names here (e.g. enquiries.customer_name
+-- vs. work_type) predate reconciliation with lib/domain and the migrations.
+--
 -- Trade Site Factory: production Supabase/PostgreSQL schema.
 -- Tenant isolation is enforced through business_id and RLS policies in deployment.
 create table businesses (id uuid primary key default gen_random_uuid(), slug text unique not null, name text not null, trading_name text, trade_type text not null default 'scaffolding', primary_contact text, public_phone text, whatsapp_phone text, email text, base_town text, postcode text, years_trading integer, family_run boolean, residential_work boolean default true, commercial_work boolean default false, site_status text not null default 'draft' check (site_status in ('draft','preview','published')), created_at timestamptz not null default now());
