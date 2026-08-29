@@ -15,4 +15,6 @@ export type Business = {
   services: string[];
   areas: string[];
   email?: string;
+  /** e.g. "scaffolding" — feeds the public header's descriptor (lib/domain's businessDescriptor), never displayed raw/unformatted. */
+  tradeType: string;
 };

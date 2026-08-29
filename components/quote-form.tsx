@@ -78,7 +78,7 @@ export function QuoteForm({ business, onSubmit }: Props) {
     <main className="form-page">
       <p className="eyebrow">Request a quote</p>
       <h1>Tell us about the job.</h1>
-      <p>You don’t need to know scaffolding terminology.</p>
+      <p>You don’t need to know scaffolding terminology. Fields marked * are required.</p>
       <form onSubmit={submit}>
         <div style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, overflow: 'hidden' }} aria-hidden="true">
           <label htmlFor="website">Leave this field blank</label>
@@ -86,22 +86,26 @@ export function QuoteForm({ business, onSubmit }: Props) {
         </div>
         <fieldset>
           <legend>Your details</legend>
-          <label>
-            Name*
-            <input value={form.name || ''} onChange={(event) => update('name', event.target.value)} />
-          </label>
-          <label>
-            Mobile*
-            <input type="tel" value={form.mobile || ''} onChange={(event) => update('mobile', event.target.value)} />
-          </label>
-          <label>
-            Email
-            <input type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} />
-          </label>
-          <label>
-            Postcode or location*
-            <input value={form.location || ''} onChange={(event) => update('location', event.target.value)} />
-          </label>
+          <div className="two">
+            <label>
+              Name*
+              <input value={form.name || ''} onChange={(event) => update('name', event.target.value)} />
+            </label>
+            <label>
+              Mobile*
+              <input type="tel" value={form.mobile || ''} onChange={(event) => update('mobile', event.target.value)} />
+            </label>
+          </div>
+          <div className="two">
+            <label>
+              Email
+              <input type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} />
+            </label>
+            <label>
+              Postcode or location*
+              <input value={form.location || ''} onChange={(event) => update('location', event.target.value)} />
+            </label>
+          </div>
           <label>
             Preferred contact method
             <select value={form.preferredContact} onChange={(event) => update('preferredContact', event.target.value)}>
@@ -113,17 +117,19 @@ export function QuoteForm({ business, onSubmit }: Props) {
         </fieldset>
         <fieldset>
           <legend>About the work</legend>
-          {choices.map(([key, label, options]) => (
-            <label key={key}>
-              {label}*
-              <select value={String(form[key] || '')} onChange={(event) => update(key, event.target.value)}>
-                <option value="">Choose…</option>
-                {options.map((option) => (
-                  <option key={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-          ))}
+          <div className="two">
+            {choices.map(([key, label, options]) => (
+              <label key={key}>
+                {label}*
+                <select value={String(form[key] || '')} onChange={(event) => update(key, event.target.value)}>
+                  <option value="">Choose…</option>
+                  {options.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
           <label>
             Optional dimensions
             <input value={form.dimensions || ''} placeholder="e.g. 8m wide" onChange={(event) => update('dimensions', event.target.value)} />
@@ -143,7 +149,7 @@ export function QuoteForm({ business, onSubmit }: Props) {
             {error}
           </p>
         )}
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" id="quote-submit" disabled={busy}>
           {busy ? 'SENDING…' : 'SEND QUOTE REQUEST'}
         </Button>
       </form>

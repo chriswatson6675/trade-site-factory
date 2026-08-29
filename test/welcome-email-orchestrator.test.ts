@@ -19,6 +19,7 @@ const BUSINESS: Business = {
   years: 17,
   services: [],
   areas: [],
+  tradeType: 'scaffolding',
 };
 const PARAMS = {
   businessId: BUSINESS_ID,

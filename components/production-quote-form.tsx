@@ -79,7 +79,7 @@ async function submitEnquiry(business: Business, draft: EnquiryDraft, photos: Ph
 
 export function ProductionQuoteForm({ business }: { business: Business }) {
   return (
-    <PageChrome business={business}>
+    <PageChrome business={business} quotePage>
       <QuoteForm business={business} onSubmit={(draft, photos, honeypot) => submitEnquiry(business, draft, photos, honeypot)} />
     </PageChrome>
   );

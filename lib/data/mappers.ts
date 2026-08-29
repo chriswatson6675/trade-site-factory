@@ -71,6 +71,8 @@ export type BusinessRow = {
   whatsapp: string | null;
   email: string | null;
   years_trading: number | null;
+  /** Optional so existing row fixtures without it still compile — `businesses.trade_type` is `not null default 'scaffolding'` in the schema, and that same default is what the mapper falls back to when this key is absent. */
+  trade_type?: string | null;
 };
 
 export const mapBusinessRow = (row: BusinessRow, services: string[], areas: string[]): Business => ({
@@ -84,6 +86,7 @@ export const mapBusinessRow = (row: BusinessRow, services: string[], areas: stri
   services,
   areas,
   email: row.email ?? undefined,
+  tradeType: row.trade_type ?? 'scaffolding',
 });
 
 /** Public visitors only ever see published projects belonging to the requested business — defense in depth alongside RLS. */

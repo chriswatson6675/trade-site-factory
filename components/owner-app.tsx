@@ -333,7 +333,7 @@ function OwnerPage({
           mission section 6. Present on every /owner view, not just the
           home screen, and never the one-time claim link. */}
       <div className="owner-topbar">
-        <a className="btn outline" href={publicSiteUrl} target="_blank" rel="noreferrer">
+        <a className="btn outline" href={publicSiteUrl} target="_blank" rel="noopener noreferrer">
           VIEW MY WEBSITE ↗
         </a>
       </div>

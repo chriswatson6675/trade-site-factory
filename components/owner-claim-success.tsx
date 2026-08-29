@@ -26,7 +26,7 @@ export function OwnerClaimSuccess({
         <a className="btn" href={manageUrl}>
           MANAGE MY WEBSITE
         </a>
-        <a className="btn outline" href={viewUrl} target="_blank" rel="noreferrer">
+        <a className="btn outline" href={viewUrl} target="_blank" rel="noopener noreferrer">
           VIEW MY WEBSITE
         </a>
       </div>

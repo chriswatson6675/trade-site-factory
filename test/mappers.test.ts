@@ -71,3 +71,20 @@ test('54 mapBusinessRow supplies the shared Business shape used across demo and 
   assert.equal(business.town, 'Chester');
   assert.deepEqual(business.services, ['Domestic scaffolding']);
 });
+
+test('173 mapBusinessRow maps trade_type to tradeType, and falls back to the schema default when the row omits it', () => {
+  const withTradeType = mapBusinessRow(
+    { id: 'biz-1', slug: 'roofers-ltd', name: 'Roofers Ltd', base_town: 'Leeds', phone: null, whatsapp: null, email: null, years_trading: null, trade_type: 'roofing' },
+    [],
+    [],
+  );
+  assert.equal(withTradeType.tradeType, 'roofing');
+
+  const withoutTradeType = mapBusinessRow(
+    { id: 'biz-2', slug: 'dee-valley-scaffolding', name: 'Dee Valley Scaffolding Ltd', base_town: 'Chester', phone: null, whatsapp: null, email: null, years_trading: null },
+    [],
+    [],
+  );
+  // Matches businesses.trade_type's own `not null default 'scaffolding'`.
+  assert.equal(withoutTradeType.tradeType, 'scaffolding');
+});

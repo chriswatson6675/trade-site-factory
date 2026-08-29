@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link';
 import type { Business, Project } from '../lib/data/types';
-import { businessCopy, publicProjects, whatsAppUrl } from '../lib/domain';
+import { businessCopy, businessDescriptor, publicProjects, whatsAppUrl } from '../lib/domain';
 
 const initials = (name: string) =>
   name
@@ -30,7 +30,7 @@ export function PublicHeader({ business }: { business: Business }) {
         <b>{initials(business.name)}</b>
         <span>
           {business.name}
-          <small>TRADE WEBSITE</small>
+          <small>{businessDescriptor(business.tradeType, business.areas, business.town)}</small>
         </span>
       </Link>
       <nav>
@@ -47,24 +47,31 @@ export function PublicHeader({ business }: { business: Business }) {
   );
 }
 
-export function MobileActions({ business }: { business: Business }) {
+/**
+ * `quotePage`: the visitor is already on the quote form, so a third
+ * "GET A QUOTE" action would just repeat where they already are. It
+ * becomes "SEND REQUEST" instead — a plain #quote-submit anchor that
+ * scrolls/focuses the form's real submit button (components/quote-form.tsx)
+ * rather than triggering a second, independent submission path.
+ */
+export function MobileActions({ business, quotePage = false }: { business: Business; quotePage?: boolean }) {
   return (
     <div className="sticky">
       <a href={`tel:${business.phone.replace(/\s/g, '')}`}>CALL</a>
       <a target="_blank" rel="noreferrer" href={whatsAppUrl(business.whatsapp, 'Hi, I would like a quote.')}>
         WHATSAPP
       </a>
-      <Link href={`/sites/${business.slug}/quote`}>GET A QUOTE</Link>
+      {quotePage ? <a href="#quote-submit">SEND REQUEST</a> : <Link href={`/sites/${business.slug}/quote`}>GET A QUOTE</Link>}
     </div>
   );
 }
 
-export function PageChrome({ business, children }: { business: Business; children: React.ReactNode }) {
+export function PageChrome({ business, children, quotePage = false }: { business: Business; children: React.ReactNode; quotePage?: boolean }) {
   return (
     <>
       <PublicHeader business={business} />
       {children}
-      <MobileActions business={business} />
+      <MobileActions business={business} quotePage={quotePage} />
     </>
   );
 }
@@ -79,13 +86,25 @@ export function Listing({ eyebrow, title, children }: { eyebrow: string; title: 
   );
 }
 
-export function DemoVisual() {
+/** Purely decorative brand artwork for the hero — never stands in for a specific job, so it carries no caption. */
+export function HeroVisual() {
   return (
-    <div className="visual" role="img" aria-label="Demo scaffolding project placeholder">
+    <div className="visual" role="presentation">
       <i />
       <i />
       <i />
-      <span>DEMO PROJECT</span>
+    </div>
+  );
+}
+
+/** Shown wherever a published project has no uploaded photo yet. Keeps the same branded abstract visual direction, but is always clearly a placeholder — never implies it's a photograph of the actual job. */
+export function ProjectPlaceholder() {
+  return (
+    <div className="visual" role="img" aria-label="No photo added for this project yet">
+      <i />
+      <i />
+      <i />
+      <span>PHOTO COMING SOON</span>
     </div>
   );
 }
@@ -109,7 +128,7 @@ export function Home({ business, projects }: { business: Business; projects: Pro
             <a href={`tel:${business.phone.replace(/\s/g, '')}`}>Call {business.phone}</a>
           </div>
         </div>
-        <DemoVisual />
+        <HeroVisual />
       </section>
       <section className="section">
         <p className="eyebrow">Recent jobs</p>
@@ -127,7 +146,7 @@ export function ProjectCards({ business, projects }: { business: Business; proje
           {project.images[0] ? (
             <img className="project-cover" src={project.images[0]} alt={`${project.title} in ${project.location}`} />
           ) : (
-            <DemoVisual />
+            <ProjectPlaceholder />
           )}
           <small>{project.location}</small>
           <h2>{project.title}</h2>
@@ -159,7 +178,7 @@ export function ProjectDetail({ business, project }: { business: Business; proje
             <img src={image} alt={`${project.title} in ${project.location}, photo ${index + 1}`} key={`${project.id}-${index}`} />
           ))
         ) : (
-          <DemoVisual />
+          <ProjectPlaceholder />
         )}
       </div>
     </main>

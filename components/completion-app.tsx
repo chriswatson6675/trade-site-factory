@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { PhotoPicker } from './photo-picker';
 import { demoRepository, type Business } from '../lib/data/repository';
-import { businessCopy, canTransition, declaredArea, type Enquiry, nextReference, projectBySlug, type Project, publicProjects, selectedService, slugify, validEnquiry, whatsAppUrl } from '../lib/domain';
+import { businessCopy, businessDescriptor, canTransition, declaredArea, type Enquiry, nextReference, projectBySlug, type Project, publicProjects, selectedService, slugify, validEnquiry, whatsAppUrl } from '../lib/domain';
 
 type ButtonProps=React.ButtonHTMLAttributes<HTMLButtonElement>&{children:React.ReactNode};
 const Button=({children,...props}:ButtonProps)=><button className="btn" {...props}>{children}</button>;
@@ -67,7 +67,7 @@ function PublicSite({pathname,business,projects,enquiries,saveEnquiries}:PublicP
  return chrome(<Home business={business} projects={projects}/>);
 }
 
-function PublicHeader({business}:{business:Business}){const root=`/sites/${business.slug}`;return <header className="header"><Link className="logo" href={root}><b>{initials(business.name)}</b><span>{business.name}<small>TRADE WEBSITE</small></span></Link><nav><Link href={root}>Home</Link><Link href={`${root}/services`}>Services</Link><Link href={`${root}/projects`}>Recent Jobs</Link><Link href={`${root}/areas`}>Areas</Link><Link href={`${root}/about`}>About</Link></nav><Link className="btn" href={`${root}/quote`}>Get a quote</Link></header>}
+function PublicHeader({business}:{business:Business}){const root=`/sites/${business.slug}`;return <header className="header"><Link className="logo" href={root}><b>{initials(business.name)}</b><span>{business.name}<small>{businessDescriptor('scaffolding',business.areas,business.town)}</small></span></Link><nav><Link href={root}>Home</Link><Link href={`${root}/services`}>Services</Link><Link href={`${root}/projects`}>Recent Jobs</Link><Link href={`${root}/areas`}>Areas</Link><Link href={`${root}/about`}>About</Link></nav><Link className="btn" href={`${root}/quote`}>Get a quote</Link></header>}
 function MobileActions({business}:{business:Business}){return <div className="sticky"><a href={`tel:${business.phone.replace(/\s/g,'')}`}>CALL</a><a target="_blank" rel="noreferrer" href={whatsAppUrl(business.whatsapp,'Hi, I would like a quote.')}>WHATSAPP</a><Link href={`/sites/${business.slug}/quote`}>GET A QUOTE</Link></div>}
 function Listing({eyebrow,title,children}:{eyebrow:string;title:string;children:React.ReactNode}){return <main className="section listing-page"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}</main>}
 function Home({business,projects}:{business:Business;projects:Project[]}){return <main><section className="hero"><div><p className="eyebrow">Scaffolding across {business.areas.slice(0,2).join(' & ')||business.town}</p><h1>Safe access.<br/><em>Properly planned.</em></h1><p>{businessCopy(business.years,business.services,business.areas)}</p><div className="actions"><Link className="btn" href={`/sites/${business.slug}/quote`}>GET A QUOTE</Link><a href={`tel:${business.phone.replace(/\s/g,'')}`}>Call {business.phone}</a></div></div><DemoVisual/></section><section className="section"><p className="eyebrow">Recent jobs</p><ProjectCards business={business} projects={publicProjects(projects,business.id).slice(0,3)}/></section></main>}
