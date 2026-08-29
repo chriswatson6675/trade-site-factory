@@ -55,7 +55,7 @@ where b.slug = 'dee-valley-scaffolding'
 on conflict (business_id, slug) do nothing;
 
 insert into projects (id, business_id, service_name, title, slug, location, description, published)
-select b.id, b.id, p.service_name, p.title, p.slug, p.location, p.description, true
+select p.id, b.id, p.service_name, p.title, p.slug, p.location, p.description, true
 from businesses b
 cross join (values
   ('00000000-0000-4000-8000-000000000000'::uuid, 'Temporary roof', 'Temporary Roof Scaffolding', 'temporary-roof-scaffolding-hoole-chester', 'Hoole, Chester', 'Temporary weather protection for a residential reroof.'),
@@ -69,8 +69,8 @@ insert into site_configurations (business_id, template_key, published_at)
 select id, 'scaffolding-v1', now() from businesses where slug = 'dee-valley-scaffolding'
 on conflict (business_id) do nothing;
 
-insert into enquiries (business_id, reference, customer_name, mobile, email, location, preferred_contact, work_type, storeys, access_areas, width, description, status)
-select b.id, 'Q-1001', 'John Smith', '07700 900456', null, 'Chester', 'WhatsApp', 'Roofing', '2 storeys', 'Front + side', '5–10m', 'Roofers are replacing slate roof. Side access available.', 'new'
+insert into enquiries (business_id, reference, customer_name, mobile, email, location, preferred_contact, work_type, storeys, access_areas, width, description, status, confirmed_at)
+select b.id, 'Q-1001', 'John Smith', '07700 900456', null, 'Chester', 'WhatsApp', 'Roofing', '2 storeys', 'Front + side', '5–10m', 'Roofers are replacing slate roof. Side access available.', 'new', now()
 from businesses b
 where b.slug = 'dee-valley-scaffolding'
 on conflict (business_id, reference) do nothing;

@@ -40,3 +40,6 @@ next-env.d.ts
 /work/
 
 
+
+# Supabase CLI local state (link/project-ref, pooler URLs) — never commit
+supabase/.temp/

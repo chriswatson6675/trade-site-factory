@@ -1,8 +1,52 @@
 # Security model — SECURITY DEFINER functions and RLS audit
 
-Written for BUILD-09 (TRADE-SITE-FACTORY-SUPABASE-HARDENING-09) and revised
-for BUILD-10 (TRADE-SITE-FACTORY-PRE-LIVE-INTEGRITY-10). Re-run this
-checklist after any future change to `supabase/migrations/`.
+Written for BUILD-09 (TRADE-SITE-FACTORY-SUPABASE-HARDENING-09), revised for
+BUILD-10 (TRADE-SITE-FACTORY-PRE-LIVE-INTEGRITY-10) and again for BUILD-11
+(TRADE-SITE-FACTORY-FIRST-LIVE-SYNC-11, the first live deployment). Re-run
+this checklist after any future change to `supabase/migrations/`.
+
+## Live migration state (BUILD-11)
+
+The schema is no longer hypothetical — it is deployed.
+
+**Applied and live.** These five migrations have been applied to the real
+Trade Site Factory Supabase project and are now **immutable migration
+history**:
+
+`20260829120000_extensions.sql`, `20260829120100_core_schema.sql`,
+`20260829120200_enquiry_reference.sql`, `20260829120300_rls_policies.sql`,
+`20260829120400_storage_buckets.sql`.
+
+**Never edit an applied migration.** Every schema correction from here on
+ships as a NEW migration with a later timestamp. Editing an applied file
+would silently desynchronise this repo from the live database while leaving
+CI green, so `test/live-migration-state.test.ts` pins the SHA-256 of all
+five; if that test fails, the fix is a new migration, never a re-pinned hash.
+
+**First Security Advisor run.** The first live Supabase Security Advisor run
+raised exactly one genuine warning — `function_search_path_mutable` for
+`public.set_updated_at`, the one function we ship that had no explicit
+`search_path` (it was missed because it is a plain trigger function rather
+than a SECURITY DEFINER one). Fixed in
+`20260829160000_harden_set_updated_at.sql`, which redefines it with
+`set search_path = ''` and no behaviour change. The five existing triggers are
+deliberately not recreated: `create or replace` preserves the function
+identity they already point at.
+
+**Findings that are intentional and must NOT be "fixed" to empty the
+advisor:**
+
+- **Tables with RLS enabled and no policies** — `business_claims`,
+  `enquiry_counters`, `enquiry_confirmation_tokens`, and the write side of
+  `business_members`. Deny-all is the design: these are reachable only
+  through the guarded SECURITY DEFINER functions and the service role.
+  Adding a policy to satisfy an advisor notice would *widen* the attack
+  surface.
+- **SECURITY DEFINER function notices** — every such function is inventoried
+  below with its grants, its authentication check and its
+  tenant-escalation check, and each is the single narrow audited gap in an
+  otherwise fully RLS-enforced schema. They are internally authorised by
+  design, not oversights.
 
 ## SECURITY DEFINER functions
 
@@ -39,7 +83,7 @@ not the bare names.
 | `transition_enquiry_status(uuid, text)` | `authenticated` only | `if auth.uid() is null then raise exception` | Looks up the enquiry's *actual* `business_id` from the row itself, then requires `is_business_member(that business_id)` — owner A can never transition owner B's enquiry. **New in BUILD-10:** also refuses any enquiry where `confirmed_at is null` — a pending/unconfirmed enquiry does not exist yet as far as the owner (or this function) is concerned |
 | `confirm_pending_enquiry(uuid, text)` **(new, BUILD-10)** | `service_role` only | N/A — only the trusted server can call it; the raw confirmation token itself is the authorisation (mission section 6: an enquiry UUID alone is never sufficient) | Row-locks the confirmation token (`for update`) before comparing hashes and before checking `confirmed_at`, so it can't be redeemed twice concurrently; deletes the token the instant it's consumed |
 | `is_legal_enquiry_transition(text, text)` | inherits default (pure predicate, no table access — no meaningful escalation surface) | N/A | Stateless truth table only |
-| `set_updated_at()` | N/A (trigger function, not `SECURITY DEFINER`, no direct grant surface, touches only `NEW`/`OLD`) | — | — |
+| `set_updated_at()` | N/A (trigger function, not `SECURITY DEFINER`, no direct grant surface, touches only `NEW`/`OLD`) | — | — (hardened in BUILD-11 with `set search_path = ''` — see *Live migration state* above; it was the sole genuine finding of the first live Security Advisor run) |
 
 **Token comparison note:** `redeem_business_claim` and
 `confirm_pending_enquiry` compare **hashes** (`token_hash = encode(extensions.digest(p_token,'sha256'),'hex')`),
