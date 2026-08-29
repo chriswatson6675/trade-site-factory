@@ -1,27 +1,59 @@
 # Security model — SECURITY DEFINER functions and RLS audit
 
 Written for BUILD-09 (TRADE-SITE-FACTORY-SUPABASE-HARDENING-09), revised for
-BUILD-10 (TRADE-SITE-FACTORY-PRE-LIVE-INTEGRITY-10) and again for BUILD-11
-(TRADE-SITE-FACTORY-FIRST-LIVE-SYNC-11, the first live deployment). Re-run
-this checklist after any future change to `supabase/migrations/`.
+BUILD-10 (TRADE-SITE-FACTORY-PRE-LIVE-INTEGRITY-10), BUILD-11
+(TRADE-SITE-FACTORY-FIRST-LIVE-SYNC-11, the first live deployment) and
+BUILD-12 (TRADE-SITE-FACTORY-MIGRATION-HISTORY-MARKER-12). Re-run this
+checklist after any future change to `supabase/migrations/`.
 
 ## Live migration state (BUILD-11)
 
 The schema is no longer hypothetical — it is deployed.
 
-**Applied and live.** These five migrations have been applied to the real
+**Applied and live.** These six migrations have been applied to the real
 Trade Site Factory Supabase project and are now **immutable migration
 history**:
 
 `20260829120000_extensions.sql`, `20260829120100_core_schema.sql`,
 `20260829120200_enquiry_reference.sql`, `20260829120300_rls_policies.sql`,
-`20260829120400_storage_buckets.sql`.
+`20260829120400_storage_buckets.sql`,
+`20260829160000_harden_set_updated_at.sql`.
 
 **Never edit an applied migration.** Every schema correction from here on
 ships as a NEW migration with a later timestamp. Editing an applied file
 would silently desynchronise this repo from the live database while leaving
 CI green, so `test/live-migration-state.test.ts` pins the SHA-256 of all
-five; if that test fails, the fix is a new migration, never a re-pinned hash.
+six; if that test fails, the fix is a new migration, never a re-pinned hash.
+
+## Migration history repair (BUILD-12)
+
+**The schema was never wrong — only the bookkeeping was.** The earliest
+migrations were originally applied through the Supabase management API rather
+than `supabase db push`. The management API assigns its own remote version
+numbers, so the rows written into `supabase_migrations.schema_migrations` did
+not match the timestamps of the files in this repo, and an entry for the seed
+data had additionally been recorded there as though it were a migration
+(`supabase/seed.sql` is demo data and is deliberately never replayed as
+schema).
+
+The migration-history table was therefore repaired to match Git: remote
+timestamps rewritten to the repo timestamps, accidental seed entry removed.
+No DDL or DML ran against the schema. Supabase recorded that repair as its
+own version, `20260829170233`, so the repo carries a matching **no-op marker
+file**, `20260829170233_repair_migration_history_to_repo.sql` — comments
+only, no statements — purely so local and remote history line up one-for-one
+and `db push`/`db diff` do not report the repo as a version behind. Test 131
+in `test/live-migration-state.test.ts` asserts it stays executable-free.
+
+Live migration history now matches this directory exactly:
+
+    20260829120000  extensions
+    20260829120100  core_schema
+    20260829120200  enquiry_reference
+    20260829120300  rls_policies
+    20260829120400  storage_buckets
+    20260829160000  harden_set_updated_at
+    20260829170233  repair_migration_history_to_repo   (no-op marker)
 
 **First Security Advisor run.** The first live Supabase Security Advisor run
 raised exactly one genuine warning — `function_search_path_mutable` for

@@ -92,7 +92,7 @@ test('129 set_updated_at is redefined with an explicit, safe search_path in the 
   assert.doesNotMatch(hardenSql, /create trigger/i);
 });
 
-test('130 the five migrations already applied to the live project are unmodified', () => {
+test('130 the six real migrations already applied to the live project are unmodified', () => {
   // Applied migrations are immutable history: if one of these hashes fails,
   // the fix is a NEW migration, not an edit — never re-point these hashes at
   // edited content to make the test pass.
@@ -102,10 +102,36 @@ test('130 the five migrations already applied to the live project are unmodified
     ['20260829120200_enquiry_reference.sql', 'bcd6028121bbec84230dd827d552dc8f61015aab592ac6f40f813a554e9db599'],
     ['20260829120300_rls_policies.sql', '365156882093c4f7c76cd0ca227684a8368d88af4da7a46ed9c68e380b66cbf1'],
     ['20260829120400_storage_buckets.sql', '6a4e9f5ec3d0b1d26c0817cc3f8d2c28753b943e4737458d9f892f7ae0b43dbc'],
+    ['20260829160000_harden_set_updated_at.sql', '30676db8d1d8438458d2db947f2e042bd570c850b6c6ea2667b61a1a0eaa919a'],
   ];
 
   for (const [name, expectedHash] of appliedMigrations) {
     const actual = createHash('sha256').update(read(`migrations/${name}`)).digest('hex');
     assert.equal(actual, expectedHash, `${name} has been modified since it was applied to the live project`);
   }
+});
+
+test('131 the migration-history repair marker exists and is a genuine no-op (comments only)', () => {
+  // 20260829170233 is a bookkeeping entry Supabase recorded when the live
+  // migration-history table was repaired to match this repo (the first
+  // migrations were applied via the management API, which assigned its own
+  // remote timestamps, and an accidental seed entry was removed). The schema
+  // was never changed. This file exists only so local Git history matches
+  // remote one-for-one — so it must never grow an executable statement.
+  const marker = read('migrations/20260829170233_repair_migration_history_to_repo.sql');
+  assert.ok(marker.trim().length > 0, 'marker migration must exist and not be empty');
+
+  const executableLines = marker
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('--'));
+  assert.deepEqual(executableLines, [], 'the marker migration must contain no executable SQL — comments only');
+
+  // Guard against anything executable hiding outside a comment. Prose inside
+  // the comments legitimately contains semicolons, so strip the comments
+  // first rather than scanning the raw text.
+  const stripped = marker.replace(/--.*$/gm, '');
+  assert.doesNotMatch(stripped, /\$\$/, 'no function bodies hiding statements');
+  assert.doesNotMatch(stripped, /;/, 'no statement terminators outside comments');
+  assert.equal(stripped.trim(), '', 'nothing at all survives comment-stripping');
 });

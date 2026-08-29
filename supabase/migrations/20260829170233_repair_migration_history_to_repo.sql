@@ -1,0 +1,48 @@
+-- BUILD-12 (TRADE-SITE-FACTORY-MIGRATION-HISTORY-MARKER-12).
+--
+-- NO-OP MARKER MIGRATION — BOOKKEEPING ONLY.
+--
+-- This file intentionally contains no SQL statements at all: no DDL, no DML,
+-- not even a `select`. Applying it does nothing, by design. Do not add
+-- statements to it.
+--
+-- Why it exists
+-- -------------
+-- The live schema was already correct. Nothing about the database needed to
+-- change; only Supabase's record of *how* it got there did.
+--
+-- The first migrations were originally applied through the Supabase
+-- management API rather than `supabase db push`. The management API assigns
+-- its own remote version timestamps, so the entries written into the live
+-- `supabase_migrations.schema_migrations` table did not match the timestamps
+-- of the corresponding files in this repository. The SQL that ran was the
+-- same; only the recorded version numbers differed.
+--
+-- On top of that, an entry for the seed data had been recorded in the
+-- migration-history table as though it were a migration. It is not one:
+-- `supabase/seed.sql` is demo data, deliberately kept out of migration
+-- history so that it is never replayed as schema.
+--
+-- The migration-history records were therefore repaired to match this
+-- repository: the remote-assigned timestamps were rewritten to the Git
+-- timestamps, and the accidental seed entry was removed. Again, this touched
+-- only the bookkeeping table — the schema itself was untouched throughout.
+--
+-- Supabase recorded that repair operation as its own migration version,
+-- 20260829170233. This file exists solely so that local Git migration history
+-- matches the remote history one-for-one; without it, every future
+-- `supabase db push` / `db diff` would report the repository as being one
+-- version behind the live project.
+--
+-- Live migration history after the repair — identical to this directory:
+--
+--   20260829120000  extensions
+--   20260829120100  core_schema
+--   20260829120200  enquiry_reference
+--   20260829120300  rls_policies
+--   20260829120400  storage_buckets
+--   20260829160000  harden_set_updated_at
+--   20260829170233  repair_migration_history_to_repo   <- this file
+--
+-- All seven are applied and are immutable history. Any schema correction
+-- ships as a NEW migration with a later timestamp — see supabase/SECURITY.md.
