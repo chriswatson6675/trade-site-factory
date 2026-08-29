@@ -5,7 +5,9 @@
 // not trust that the uploads succeeded just because the client says so —
 // it independently verifies each object exists before ever returning
 // success, and rolls the enquiry back (with best-effort Storage cleanup)
-// if any are missing.
+// if any are missing. The enquiryId alone is not accepted as sufficient
+// authorisation — the matching confirmationToken issued in phase 1 (a raw,
+// high-entropy secret whose hash alone is stored) is required too.
 import { NextResponse } from 'next/server';
 import { confirmEnquirySubmission, EnquirySubmissionError } from '../../../../lib/data/enquiry-submission';
 import { createServiceClient } from '../../../../lib/supabase/service';
@@ -17,9 +19,14 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
   }
-  const enquiryId = body && typeof body === 'object' ? (body as Record<string, unknown>).enquiryId : undefined;
+  const record = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const enquiryId = record.enquiryId;
+  const confirmationToken = record.confirmationToken;
   if (typeof enquiryId !== 'string' || !enquiryId) {
     return NextResponse.json({ error: 'Missing enquiryId.' }, { status: 400 });
+  }
+  if (typeof confirmationToken !== 'string' || !confirmationToken) {
+    return NextResponse.json({ error: 'Missing confirmationToken.' }, { status: 400 });
   }
 
   let client;
@@ -30,7 +37,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await confirmEnquirySubmission(client, enquiryId);
+    const result = await confirmEnquirySubmission(client, enquiryId, confirmationToken);
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof EnquirySubmissionError) {

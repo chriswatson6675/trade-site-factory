@@ -12,16 +12,16 @@ create or replace function allocate_enquiry_reference(p_business_id uuid)
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_value integer;
 begin
-  insert into enquiry_counters (business_id, next_value)
+  insert into public.enquiry_counters (business_id, next_value)
   values (p_business_id, 1001)
   on conflict (business_id) do nothing;
 
-  update enquiry_counters
+  update public.enquiry_counters
   set next_value = next_value + 1
   where business_id = p_business_id
   returning next_value - 1 into v_value;

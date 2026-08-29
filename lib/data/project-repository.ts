@@ -78,34 +78,42 @@ export async function publishProject(client: SupabaseClient, businessId: string,
   const slug = slugify(`${title}-${Date.now()}`);
   const paths = await Promise.all(draft.files.map((file) => uploadProjectImage(client, businessId, projectId, file)));
 
-  const { data, error } = await client
-    .from('projects')
-    .insert({
-      id: projectId,
-      business_id: businessId,
-      service_name: draft.service,
-      title,
-      slug,
-      location: draft.location,
-      description: draft.description || `Completed ${draft.service.toLowerCase()} in ${draft.location}.`,
-      published: true,
-    })
-    .select('*')
-    .single();
-  if (error) throw new Error(`Could not publish job: ${error.message}`);
+  // Photos are already sitting in Storage at this point — if anything
+  // below fails, best-effort clean them up rather than leaving avoidable
+  // orphans (mission section 13).
+  try {
+    const { data, error } = await client
+      .from('projects')
+      .insert({
+        id: projectId,
+        business_id: businessId,
+        service_name: draft.service,
+        title,
+        slug,
+        location: draft.location,
+        description: draft.description || `Completed ${draft.service.toLowerCase()} in ${draft.location}.`,
+        published: true,
+      })
+      .select('*')
+      .single();
+    if (error) throw new Error(`Could not publish job: ${error.message}`);
 
-  if (paths.length > 0) {
-    const { error: imagesError } = await client
-      .from('project_images')
-      .insert(paths.map((storage_path, index) => ({ project_id: projectId, business_id: businessId, storage_path, sort_order: index })));
-    if (imagesError) throw new Error(`Job was published but photos could not be saved: ${imagesError.message}`);
+    if (paths.length > 0) {
+      const { error: imagesError } = await client
+        .from('project_images')
+        .insert(paths.map((storage_path, index) => ({ project_id: projectId, business_id: businessId, storage_path, sort_order: index })));
+      if (imagesError) throw new Error(`Job was published but photos could not be saved: ${imagesError.message}`);
+    }
+
+    return await toProject(
+      client,
+      data as ProjectRow,
+      paths.map((storage_path, index) => ({ id: '', project_id: projectId, storage_path, sort_order: index })),
+    );
+  } catch (cause) {
+    await removeProjectImages(client, paths);
+    throw cause;
   }
-
-  return toProject(
-    client,
-    data as ProjectRow,
-    paths.map((storage_path, index) => ({ id: '', project_id: projectId, storage_path, sort_order: index })),
-  );
 }
 
 export type ProjectUpdate = {
@@ -140,17 +148,24 @@ export async function updateProject(client: SupabaseClient, businessId: string, 
 
   if (update.addFiles && update.addFiles.length > 0) {
     const paths = await Promise.all(update.addFiles.map((file) => uploadProjectImage(client, businessId, project.id, file)));
-    const { data: last } = await client
-      .from('project_images')
-      .select('sort_order')
-      .eq('project_id', project.id)
-      .order('sort_order', { ascending: false })
-      .limit(1);
-    const startOrder = last && last[0] ? (last[0] as { sort_order: number }).sort_order + 1 : 0;
-    const { error: insertError } = await client
-      .from('project_images')
-      .insert(paths.map((storage_path, index) => ({ project_id: project.id, business_id: businessId, storage_path, sort_order: startOrder + index })));
-    if (insertError) throw new Error(`Could not save new photos: ${insertError.message}`);
+    // Same rationale as publishProject(): don't leave the objects that did
+    // upload orphaned in Storage if the metadata insert fails.
+    try {
+      const { data: last } = await client
+        .from('project_images')
+        .select('sort_order')
+        .eq('project_id', project.id)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      const startOrder = last && last[0] ? (last[0] as { sort_order: number }).sort_order + 1 : 0;
+      const { error: insertError } = await client
+        .from('project_images')
+        .insert(paths.map((storage_path, index) => ({ project_id: project.id, business_id: businessId, storage_path, sort_order: startOrder + index })));
+      if (insertError) throw new Error(`Could not save new photos: ${insertError.message}`);
+    } catch (cause) {
+      await removeProjectImages(client, paths);
+      throw cause;
+    }
   }
 
   const { data, error } = await client.from('projects').select('*').eq('id', project.id).single();

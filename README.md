@@ -12,15 +12,15 @@ The Next App Router UI has one governed scaffolding template. Structured busines
 
 ## Production data model
 
-The production Supabase/PostgreSQL schema is in `supabase/schema.sql`: `users`, `businesses`, `services`, `business_services`, `service_areas`, `projects`, `project_images`, `testimonials`, `accreditations`, `site_configurations`, `enquiries`, `enquiry_images`, `generated_content`, and `audit_events`. Every tenant-owned record carries `business_id`; enforce this with RLS. Configure the optional Supabase keys in `.env.example`, then replace the local adapter with Supabase queries and Storage uploads.
+The real, applied-in-order schema is the migration chain in `supabase/migrations/` (not `supabase/schema.sql`, which is superseded and kept only for historical reference). It covers `businesses`, `business_members`, `business_claims`, `services`, `business_services`, `service_areas`, `projects`, `project_images`, `testimonials`, `accreditations`, `site_configurations`, `enquiries` (with a `pending`/`confirmed` submission state), `enquiry_images`, `enquiry_confirmation_tokens`, and `enquiry_counters`. Every tenant-owned record carries `business_id`, enforced by Row Level Security — see `supabase/SECURITY.md` for the full policy/function audit. Configure the Supabase keys in `.env.example`, then see `supabase/AUTH_SETUP.md` for the one-time Supabase Auth dashboard configuration (magic link email template, redirect URL allow-list) required for owner sign-in to work.
 
 ## Delivery notes
 
-WhatsApp uses normalised `wa.me` URLs and only opens a pre-filled messageâ€”nothing sends automatically. Quote form photos support phone camera capture and removal before submission. In a production Supabase deployment, public sites should be ISR-cached by business slug and draft/preview routes should send `noindex`; custom domains can later resolve to that slug.
+WhatsApp uses normalised `wa.me` URLs and only opens a pre-filled message — nothing sends automatically. Quote form photos upload directly to Supabase Storage from the browser (never proxied through a server function); public site pages read fresh from Supabase on every request (`force-dynamic`), so publishing or editing content updates the live site with no redeploy.
 
 Run `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build`.
 
 ## Current limitation
 
-This is a self-contained MVP demo rather than a configured Supabase deployment: authentication, durable PostgreSQL persistence, Storage upload, sitemap and per-record metadata are the next integration increment. No real business data or credentials are included.
+No Trade Site Factory Supabase project has been created yet — this repo is a fully-built, unit-tested migration chain and application layer, pending the Founder completing the one-time setup in `supabase/AUTH_SETUP.md` and applying the migrations. Until then the app runs in local demo mode (browser-local storage, seeded fictional data) with no credentials required. `lib/rate-limit.ts` is a documented no-op seam, not real abuse protection — add a real limiter/Turnstile before broad public launch.
 

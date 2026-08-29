@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (relativePath: string) => readFileSync(new URL(`../supabase/${relativePath}`, import.meta.url), 'utf8');
 
+const extensionsSql = read('migrations/20260829120000_extensions.sql');
 const referenceSql = read('migrations/20260829120200_enquiry_reference.sql');
 const rlsSql = read('migrations/20260829120300_rls_policies.sql');
 const storageSql = read('migrations/20260829120400_storage_buckets.sql');
@@ -34,17 +35,86 @@ test('75 transition_enquiry_status is granted to authenticated only, never anon/
   assert.doesNotMatch(rlsSql, /grant execute on function transition_enquiry_status\(uuid, text\) to (anon|public)/);
 });
 
-test('76 every SECURITY DEFINER function sets an explicit search_path', () => {
+test('76 every SECURITY DEFINER function sets search_path to the empty string (current Supabase guidance), not "public"', () => {
   const definerBlocks = [...rlsSql.matchAll(/security definer[\s\S]*?\$\$;/g)].map((m) => m[0]);
-  assert.ok(definerBlocks.length >= 3, 'expected at least is_business_member, redeem_business_claim and transition_enquiry_status');
-  definerBlocks.forEach((block) => assert.match(block, /set search_path = public/));
+  assert.ok(definerBlocks.length >= 4, 'expected at least is_business_member, redeem_business_claim, transition_enquiry_status and confirm_pending_enquiry');
+  definerBlocks.forEach((block) => {
+    assert.match(block, /set search_path = ''/);
+    assert.doesNotMatch(block, /set search_path = public\b/);
+  });
+});
+
+test('118 pgcrypto is installed explicitly into the extensions schema', () => {
+  assert.match(extensionsSql, /create extension if not exists pgcrypto with schema extensions/);
+});
+
+test('119 digest() is always called schema-qualified as extensions.digest — never bare — in every function body that uses it', () => {
+  // Scoped to the two function bodies that actually call digest(), not the
+  // whole file, so this doesn't get tripped up by prose mentioning
+  // "digest()" in a comment (which is deliberately unqualified — comments
+  // aren't SQL).
+  const redeemBody = rlsSql.slice(rlsSql.indexOf('create or replace function redeem_business_claim'), rlsSql.indexOf('revoke all on function redeem_business_claim'));
+  const confirmBody = rlsSql.slice(rlsSql.indexOf('create or replace function confirm_pending_enquiry'), rlsSql.indexOf('revoke all on function confirm_pending_enquiry'));
+  for (const body of [redeemBody, confirmBody]) {
+    const calls = [...body.matchAll(/[\w.]*digest\(/g)].map((m) => m[0]);
+    assert.ok(calls.length >= 1, 'expected at least one digest() call in this function body');
+    calls.forEach((call) => assert.equal(call, 'extensions.digest('));
+  }
+});
+
+test('120 SECURITY DEFINER function bodies never call a sibling function of ours unqualified (would fail to resolve under search_path = \'\')', () => {
+  // transition_enquiry_status calls is_business_member and is_legal_enquiry_transition.
+  const transitionBody = rlsSql.slice(
+    rlsSql.indexOf('create or replace function transition_enquiry_status'),
+    rlsSql.indexOf('revoke all on function transition_enquiry_status'),
+  );
+  assert.match(transitionBody, /public\.is_business_member\(/);
+  assert.match(transitionBody, /public\.is_legal_enquiry_transition\(/);
+  assert.doesNotMatch(transitionBody, /[^.]\bis_business_member\(/); // no unqualified call sneaking in
+  assert.doesNotMatch(transitionBody, /[^.]\bis_legal_enquiry_transition\(/);
+});
+
+test('121 confirm_pending_enquiry is explicitly granted to service_role only', () => {
+  assert.match(rlsSql, /grant execute on function confirm_pending_enquiry\(uuid, text\) to service_role/);
+  assert.match(rlsSql, /revoke all on function confirm_pending_enquiry\(uuid, text\) from public/);
+  assert.match(rlsSql, /revoke all on function confirm_pending_enquiry\(uuid, text\) from anon/);
+  assert.match(rlsSql, /revoke all on function confirm_pending_enquiry\(uuid, text\) from authenticated/);
+  assert.doesNotMatch(rlsSql, /grant execute on function confirm_pending_enquiry\(uuid, text\) to (anon|authenticated|public)/);
 });
 
 test('77 no direct UPDATE policy exists for owners on enquiries — status changes must go through the RPC', () => {
   const enquiriesPolicySection = rlsSql.slice(rlsSql.indexOf('-- enquiries '), rlsSql.indexOf('-- enquiry_images'));
   assert.doesNotMatch(enquiriesPolicySection, /for update/i);
   assert.doesNotMatch(enquiriesPolicySection, /for all/i);
-  assert.match(enquiriesPolicySection, /owner can read own enquiries/);
+  assert.match(enquiriesPolicySection, /owner can read own confirmed enquiries/);
+});
+
+test('122 the owner enquiries SELECT policy requires confirmed_at is not null — a pending enquiry is invisible', () => {
+  const enquiriesPolicySection = rlsSql.slice(rlsSql.indexOf('-- enquiries '), rlsSql.indexOf('-- enquiry_images'));
+  assert.match(enquiriesPolicySection, /using \(is_business_member\(business_id\) and confirmed_at is not null\)/);
+});
+
+test('123 the owner enquiry_images SELECT policy requires the PARENT enquiry to be confirmed too', () => {
+  const imagesPolicySection = rlsSql.slice(rlsSql.indexOf('-- enquiry_images '), rlsSql.indexOf('-- enquiry_counters'));
+  assert.match(imagesPolicySection, /e\.confirmed_at is not null/);
+});
+
+test('124 transition_enquiry_status refuses a pending (unconfirmed) enquiry', () => {
+  const transitionBody = rlsSql.slice(
+    rlsSql.indexOf('create or replace function transition_enquiry_status'),
+    rlsSql.indexOf('revoke all on function transition_enquiry_status'),
+  );
+  assert.match(transitionBody, /confirmed_at is null/);
+  assert.match(transitionBody, /not yet confirmed/);
+});
+
+test('125 enquiry_confirmation_tokens stores only a hash, never the raw token, and has RLS enabled with no policies', () => {
+  assert.match(coreSql, /create table enquiry_confirmation_tokens/);
+  const tableBlock = coreSql.slice(coreSql.indexOf('create table enquiry_confirmation_tokens'));
+  assert.match(tableBlock, /token_hash text not null/);
+  assert.doesNotMatch(tableBlock.slice(0, 300), /raw_token|plain_token/);
+  assert.match(rlsSql, /alter table enquiry_confirmation_tokens enable row level security/);
+  assert.doesNotMatch(rlsSql, /on enquiry_confirmation_tokens for/);
 });
 
 test('78 the claim flow requires an authenticated user and rejects a used/expired token, in the SQL itself', () => {

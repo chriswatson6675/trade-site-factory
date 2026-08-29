@@ -32,11 +32,17 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const authenticated = Boolean(data?.claims);
 
-  const path = request.nextUrl.pathname;
-  if (shouldRedirectToSignIn(path, authenticated)) {
+  const pathname = request.nextUrl.pathname;
+  if (shouldRedirectToSignIn(pathname, authenticated)) {
+    // Preserve the FULL intended destination — pathname AND search — so a
+    // claim link like /owner/claim?token=... survives the round trip
+    // through sign-in. Dropping the query string here was the bug: it
+    // silently discarded the claim token (mission section 1).
+    const destination = pathname + request.nextUrl.search;
     const url = request.nextUrl.clone();
     url.pathname = '/owner/sign-in';
-    url.searchParams.set('next', path);
+    url.search = '';
+    url.searchParams.set('next', destination);
     return NextResponse.redirect(url);
   }
 

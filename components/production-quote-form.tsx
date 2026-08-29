@@ -7,7 +7,7 @@ import { EnquiryDraft, QuoteForm } from './quote-form';
 
 type StartResponse =
   | { status: 'complete'; reference: string }
-  | { status: 'pending-uploads'; enquiryId: string; reference: string; uploads: { path: string; token: string; signedUrl: string }[] };
+  | { status: 'pending-uploads'; enquiryId: string; confirmationToken: string; reference: string; uploads: { path: string; token: string; signedUrl: string }[] };
 
 /**
  * Two-phase submission (mission sections 7 & 8): phase 1 validates and
@@ -49,7 +49,7 @@ async function submitEnquiry(business: Business, draft: EnquiryDraft, photos: Ph
     return { reference: startBody.reference! };
   }
 
-  const { enquiryId, uploads } = startBody as Extract<StartResponse, { status: 'pending-uploads' }>;
+  const { enquiryId, confirmationToken, uploads } = startBody as Extract<StartResponse, { status: 'pending-uploads' }>;
   const supabase = createClient();
   await Promise.allSettled(
     uploads.map(async (upload, index) => {
@@ -62,11 +62,13 @@ async function submitEnquiry(business: Business, draft: EnquiryDraft, photos: Ph
 
   // Always ask the server to confirm — it independently re-checks Storage
   // rather than trusting the outcome of the uploads above, and performs
-  // cleanup if anything is missing.
+  // cleanup if anything is missing. confirmationToken is the one-time
+  // capability that authorises this — the enquiryId alone is not enough
+  // (mission section 6).
   const confirmResponse = await fetch('/api/enquiries/confirm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enquiryId }),
+    body: JSON.stringify({ enquiryId, confirmationToken }),
   });
   const confirmBody = (await confirmResponse.json().catch(() => ({}))) as { reference?: string; error?: string };
   if (!confirmResponse.ok || !confirmBody.reference) {

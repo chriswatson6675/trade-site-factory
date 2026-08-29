@@ -4,11 +4,13 @@
 -- path described in the mission brief; everything else goes through these
 -- policies with the caller's own session.
 --
--- Every SECURITY DEFINER function below explicitly sets search_path (to
--- stop a caller from shadowing catalogue objects via a hostile search_path)
--- and is granted EXECUTE only to the specific role(s) that should ever call
--- it — nothing relies on PostgreSQL's default PUBLIC grant. See
--- supabase/SECURITY.md for the full audit.
+-- Every SECURITY DEFINER function below uses `set search_path = ''` (the
+-- current Supabase-recommended posture — see supabase/SECURITY.md) and
+-- fully qualifies every table/function/extension it touches (public.*,
+-- extensions.*), rather than relying on public being on the search path.
+-- pg_catalog is always implicitly searched regardless of search_path, so
+-- built-ins (encode(), coalesce(), etc.) never need qualification — only
+-- extension-provided functions like pgcrypto's digest() do.
 
 alter table businesses enable row level security;
 alter table business_members enable row level security;
@@ -24,6 +26,7 @@ alter table site_configurations enable row level security;
 alter table enquiries enable row level security;
 alter table enquiry_images enable row level security;
 alter table enquiry_counters enable row level security;
+alter table enquiry_confirmation_tokens enable row level security;
 
 -- Helper: is the current user a member (owner) of a given business?
 create or replace function is_business_member(p_business_id uuid)
@@ -31,10 +34,10 @@ returns boolean
 language sql
 security definer
 stable
-set search_path = public
+set search_path = ''
 as $$
   select exists (
-    select 1 from business_members
+    select 1 from public.business_members
     where business_id = p_business_id and user_id = auth.uid()
   );
 $$;
@@ -127,9 +130,9 @@ create policy "owner can manage own projects"
 
 -- project_images ---------------------------------------------------------
 -- Table-level read policy for anon/authenticated Postgres queries. The
--- project-images bucket is now PRIVATE (20260829120400_storage_buckets.sql)
--- — the matching storage.objects policy in that file is what actually
--- gates whether a signed URL can be minted for a given photo.
+-- project-images bucket is PRIVATE (20260829120400_storage_buckets.sql) —
+-- the matching storage.objects policy in that file is what actually gates
+-- whether a signed URL can be minted for a given photo.
 create policy "public can read images of published projects"
   on project_images for select
   to anon, authenticated
@@ -173,26 +176,38 @@ create policy "owner can manage own site_configurations"
 -- server-side /api/enquiries route using the service role key, after
 -- server-side validation.
 --
--- No owner UPDATE policy either (BUILD-08 had one — removed here). An
--- owner must never be able to rewrite a customer's submitted facts (name,
--- mobile, email, location, work description, dimensions, ...); the only
--- legitimate owner write is a status change, which now goes exclusively
--- through transition_enquiry_status() below.
-create policy "owner can read own enquiries"
+-- No owner UPDATE policy either. An owner must never be able to rewrite a
+-- customer's submitted facts (name, mobile, email, location, work
+-- description, dimensions, ...); the only legitimate owner write is a
+-- status change, which goes exclusively through transition_enquiry_status()
+-- below.
+--
+-- confirmed_at is not null is required for owner SELECT (mission section
+-- 5): a PENDING enquiry (phase 1 done, photos not yet verified — or
+-- abandoned entirely) must be invisible to the owner, not merely filtered
+-- out in application code. The service role (used by the public
+-- submission/confirmation routes) bypasses RLS entirely, so it can still
+-- read/manage pending rows.
+create policy "owner can read own confirmed enquiries"
   on enquiries for select
   to authenticated
-  using (is_business_member(business_id));
+  using (is_business_member(business_id) and confirmed_at is not null);
 
 -- enquiry_images -----------------------------------------------------------
-create policy "owner can read own enquiry_images"
+-- Same confirmed-only rule, applied via the parent enquiry, so a pending
+-- enquiry's photos are equally invisible even if somehow queried directly.
+create policy "owner can read own confirmed enquiry_images"
   on enquiry_images for select
   to authenticated
-  using (is_business_member(business_id));
+  using (
+    is_business_member(business_id)
+    and exists (select 1 from enquiries e where e.id = enquiry_id and e.confirmed_at is not null)
+  );
 
--- enquiry_counters -----------------------------------------------------------
--- No policies granted at all: only the SECURITY DEFINER
--- allocate_enquiry_reference() function (owned by the migration role) may
--- touch this table, so it stays invisible to anon/authenticated directly.
+-- enquiry_counters / enquiry_confirmation_tokens ----------------------------
+-- No policies granted at all: only SECURITY DEFINER functions (owned by
+-- the migration role) touch these tables, so they stay invisible to
+-- anon/authenticated directly.
 
 -- Bootstrap: redeem a one-time business claim -----------------------------
 -- The only sanctioned way to create a business_members row. Requires an
@@ -207,7 +222,7 @@ create or replace function redeem_business_claim(p_token text)
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_token_hash text;
@@ -217,10 +232,10 @@ begin
     raise exception 'authentication required';
   end if;
 
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
 
   select * into v_claim
-  from business_claims
+  from public.business_claims
   where token_hash = v_token_hash
   for update;
 
@@ -238,10 +253,10 @@ begin
   -- business_members_one_owner_per_business raises a unique violation
   -- here and the whole function — including the used_at update below —
   -- rolls back, so this token is left unused rather than silently wasted.
-  insert into business_members (business_id, user_id, role)
+  insert into public.business_members (business_id, user_id, role)
   values (v_claim.business_id, auth.uid(), 'owner');
 
-  update business_claims set used_at = now() where id = v_claim.id;
+  update public.business_claims set used_at = now() where id = v_claim.id;
 
   return v_claim.business_id;
 end;
@@ -260,6 +275,7 @@ create or replace function is_legal_enquiry_transition(p_from text, p_to text)
 returns boolean
 language sql
 immutable
+set search_path = ''
 as $$
   select p_from = p_to or (p_from, p_to) in (
     ('new', 'contacted'), ('new', 'lost'),
@@ -272,33 +288,41 @@ create or replace function transition_enquiry_status(p_enquiry_id uuid, p_new_st
 returns enquiries
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
-  v_enquiry enquiries;
+  v_enquiry public.enquiries;
 begin
   if auth.uid() is null then
     raise exception 'authentication required';
   end if;
 
-  select * into v_enquiry from enquiries where id = p_enquiry_id for update;
+  select * into v_enquiry from public.enquiries where id = p_enquiry_id for update;
   if v_enquiry is null then
     raise exception 'unknown enquiry';
   end if;
 
-  if not is_business_member(v_enquiry.business_id) then
+  -- Unqualified calls to our own helper functions would fail to resolve
+  -- under search_path = '' — both must be schema-qualified here too.
+  if not public.is_business_member(v_enquiry.business_id) then
     raise exception 'not authorised for this enquiry';
+  end if;
+
+  -- Mission section 5: a pending (unconfirmed) enquiry does not exist yet
+  -- as far as the owner is concerned, even via this controlled function.
+  if v_enquiry.confirmed_at is null then
+    raise exception 'this enquiry is not yet confirmed';
   end if;
 
   if not (p_new_status in ('new', 'contacted', 'quoted', 'won', 'lost')) then
     raise exception 'unknown status: %', p_new_status;
   end if;
 
-  if not is_legal_enquiry_transition(v_enquiry.status, p_new_status) then
+  if not public.is_legal_enquiry_transition(v_enquiry.status, p_new_status) then
     raise exception 'cannot move an enquiry from % to %', v_enquiry.status, p_new_status;
   end if;
 
-  update enquiries set status = p_new_status where id = p_enquiry_id
+  update public.enquiries set status = p_new_status where id = p_enquiry_id
   returning * into v_enquiry;
 
   return v_enquiry;
@@ -308,3 +332,60 @@ $$;
 revoke all on function transition_enquiry_status(uuid, text) from public;
 revoke all on function transition_enquiry_status(uuid, text) from anon;
 grant execute on function transition_enquiry_status(uuid, text) to authenticated;
+
+-- Confirmation capability redemption ----------------------------------------
+-- Atomically verifies the raw confirmation token against its stored hash
+-- (see enquiry_confirmation_tokens) and, only if it matches an unconfirmed
+-- enquiry, marks the enquiry confirmed and deletes the (now spent) token —
+-- all inside one statement, so there is no window where a second call with
+-- the same token could also succeed. The enquiry UUID alone is never
+-- sufficient (mission section 6): callers must also present the exact
+-- token issued for it in phase 1 — see lib/data/enquiry-submission.ts,
+-- which additionally verifies every reserved photo exists in Storage
+-- *before* ever calling this function.
+create or replace function confirm_pending_enquiry(p_enquiry_id uuid, p_token text)
+returns enquiries
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_token_hash text;
+  v_stored_hash text;
+  v_enquiry public.enquiries;
+begin
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
+
+  select token_hash into v_stored_hash
+  from public.enquiry_confirmation_tokens
+  where enquiry_id = p_enquiry_id
+  for update;
+
+  if v_stored_hash is null then
+    raise exception 'invalid or already-used confirmation token';
+  end if;
+  if v_stored_hash <> v_token_hash then
+    raise exception 'invalid confirmation token';
+  end if;
+
+  select * into v_enquiry from public.enquiries where id = p_enquiry_id;
+  if v_enquiry is null then
+    raise exception 'unknown enquiry';
+  end if;
+  if v_enquiry.confirmed_at is not null then
+    raise exception 'enquiry already confirmed';
+  end if;
+
+  update public.enquiries set confirmed_at = now() where id = p_enquiry_id
+  returning * into v_enquiry;
+
+  delete from public.enquiry_confirmation_tokens where enquiry_id = p_enquiry_id;
+
+  return v_enquiry;
+end;
+$$;
+
+revoke all on function confirm_pending_enquiry(uuid, text) from public;
+revoke all on function confirm_pending_enquiry(uuid, text) from anon;
+revoke all on function confirm_pending_enquiry(uuid, text) from authenticated;
+grant execute on function confirm_pending_enquiry(uuid, text) to service_role;

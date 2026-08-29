@@ -167,6 +167,16 @@ create table enquiries (
   dimensions text,
   description text not null,
   status text not null default 'new' check (status in ('new', 'contacted', 'quoted', 'won', 'lost')),
+  -- Pending vs confirmed submission state (mission section 4). A row is
+  -- created here the moment phase 1 of a public enquiry submission
+  -- durably persists it, but a NULL confirmed_at means it isn't a real
+  -- enquiry yet as far as the owner is concerned — see
+  -- 20260829120300_rls_policies.sql, where the owner SELECT policy (and
+  -- transition_enquiry_status) both require confirmed_at is not null. A
+  -- no-photo submission is confirmed immediately in the same insert; a
+  -- submission with photos is only confirmed by confirm_pending_enquiry()
+  -- once every reserved photo is verified to actually exist in Storage.
+  confirmed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (business_id, reference),
@@ -175,6 +185,9 @@ create table enquiries (
 );
 create index enquiries_business_status_idx on enquiries(business_id, status);
 create index enquiries_business_created_idx on enquiries(business_id, created_at desc);
+-- Lets the abandoned-pending cleanup script (scripts/cleanup-pending-enquiries.ts
+-- — see supabase/SECURITY.md) find stale pending rows without a full scan.
+create index enquiries_pending_created_idx on enquiries(created_at) where confirmed_at is null;
 
 create table enquiry_images (
   id uuid primary key default gen_random_uuid(),
@@ -187,6 +200,19 @@ create table enquiry_images (
 );
 create index enquiry_images_enquiry_idx on enquiry_images(enquiry_id, sort_order);
 create index enquiry_images_business_idx on enquiry_images(business_id);
+
+-- One confirmation capability per pending (photo-bearing) enquiry — the
+-- enquiry's UUID alone is never sufficient to trigger the destructive
+-- verify-or-rollback operation in confirm_pending_enquiry() (mission
+-- section 6); the caller must also present the matching raw token, whose
+-- hash is the only thing stored here. Deleted (via cascade) the moment the
+-- enquiry is confirmed or rolled back, so a row's mere existence means
+-- "still pending, still redeemable".
+create table enquiry_confirmation_tokens (
+  enquiry_id uuid primary key references enquiries(id) on delete cascade,
+  token_hash text not null,
+  created_at timestamptz not null default now()
+);
 
 -- updated_at maintenance -----------------------------------------------------
 create or replace function set_updated_at()

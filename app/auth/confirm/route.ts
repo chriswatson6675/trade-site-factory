@@ -11,7 +11,12 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const tokenHash = searchParams.get('token_hash');
   const type = searchParams.get('type') as EmailOtpType | null;
-  const next = safeRedirectPath(searchParams.get('next'));
+  // `next` is what this app itself passed as emailRedirectTo (see
+  // components/sign-in-form.tsx) and comes back to us via the Magic Link
+  // template's {{ .RedirectTo }} — see supabase/AUTH_SETUP.md. It can
+  // legitimately be a same-origin *absolute* URL, so this needs the real
+  // request origin, not the relative-only variant.
+  const next = safeRedirectPath(searchParams.get('next'), origin);
 
   if (tokenHash && type) {
     const supabase = await createClient();
@@ -23,5 +28,6 @@ export async function GET(request: NextRequest) {
 
   const errorUrl = new URL('/owner/sign-in', origin);
   errorUrl.searchParams.set('error', 'Your sign-in link is invalid or has expired. Please request a new one.');
+  errorUrl.searchParams.set('next', next);
   return NextResponse.redirect(errorUrl);
 }

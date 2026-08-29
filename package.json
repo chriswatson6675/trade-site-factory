@@ -12,7 +12,8 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "claim:create": "node --experimental-strip-types scripts/create-claim-link.ts"
+    "claim:create": "node --experimental-strip-types scripts/create-claim-link.ts",
+    "cleanup:pending-enquiries": "node --experimental-strip-types scripts/cleanup-pending-enquiries.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.7.0",

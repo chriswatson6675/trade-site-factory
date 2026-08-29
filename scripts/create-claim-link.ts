@@ -8,7 +8,7 @@
 // raw token is never written anywhere except this terminal output — only
 // its SHA-256 hash is stored, in business_claims.token_hash.
 import { createClient } from '@supabase/supabase-js';
-import { generateClaimToken, hashClaimToken } from '../lib/claim-token.ts';
+import { generateSecureToken, hashSecureToken } from '../lib/secure-token.ts';
 
 async function main() {
   const [, , slug, hoursArg] = process.argv;
@@ -46,8 +46,8 @@ async function main() {
     return;
   }
 
-  const token = generateClaimToken();
-  const tokenHash = hashClaimToken(token);
+  const token = generateSecureToken();
+  const tokenHash = hashSecureToken(token);
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
   const { error: insertError } = await client.from('business_claims').insert({
