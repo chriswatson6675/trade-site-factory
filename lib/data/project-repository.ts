@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { slugify } from '../domain/index.ts';
 import { filterPublicProjectRows, mapProjectRow, type ProjectRow } from './mappers.ts';
-import { publicProjectImageUrl, removeProjectImages, uploadProjectImage } from './storage-service.ts';
+import { removeProjectImages, signedProjectImageUrls, uploadProjectImage } from './storage-service.ts';
 import type { Project } from './types';
 
 type ImageRow = { id: string; project_id: string; storage_path: string; sort_order: number };
@@ -17,11 +17,22 @@ async function imagesByProject(client: SupabaseClient, projectIds: string[]): Pr
   return byProject;
 }
 
-const toProject = (client: SupabaseClient, row: ProjectRow, images: ImageRow[]): Project =>
-  mapProjectRow(
-    row,
-    images.map((image) => publicProjectImageUrl(client, image.storage_path)),
+/** project-images is a private bucket — every read (public site or owner dashboard) resolves through a short-lived signed URL, never a bucket-public URL. */
+async function toProjects(client: SupabaseClient, rows: ProjectRow[], imagesByProjectId: Record<string, ImageRow[]>): Promise<Project[]> {
+  const allPaths = Object.values(imagesByProjectId).flat().map((image) => image.storage_path);
+  const signedUrls = await signedProjectImageUrls(client, allPaths);
+  return rows.map((row) =>
+    mapProjectRow(
+      row,
+      (imagesByProjectId[row.id] ?? []).map((image) => signedUrls[image.storage_path]).filter((url): url is string => Boolean(url)),
+    ),
   );
+}
+
+async function toProject(client: SupabaseClient, row: ProjectRow, images: ImageRow[]): Promise<Project> {
+  const [project] = await toProjects(client, [row], { [row.id]: images });
+  return project;
+}
 
 export async function getPublicProjects(client: SupabaseClient, businessId: string): Promise<Project[]> {
   const { data, error } = await client
@@ -33,7 +44,7 @@ export async function getPublicProjects(client: SupabaseClient, businessId: stri
   if (error) throw new Error(`Could not load projects: ${error.message}`);
   const rows = filterPublicProjectRows((data ?? []) as ProjectRow[], businessId);
   const images = await imagesByProject(client, rows.map((row) => row.id));
-  return rows.map((row) => toProject(client, row, images[row.id] ?? []));
+  return toProjects(client, rows, images);
 }
 
 export async function getPublicProjectBySlug(client: SupabaseClient, businessId: string, slug: string): Promise<Project | null> {
@@ -56,14 +67,14 @@ export async function getOwnerProjects(client: SupabaseClient, businessId: strin
   if (error) throw new Error(`Could not load jobs: ${error.message}`);
   const rows = (data ?? []) as ProjectRow[];
   const images = await imagesByProject(client, rows.map((row) => row.id));
-  return rows.map((row) => toProject(client, row, images[row.id] ?? []));
+  return toProjects(client, rows, images);
 }
 
 export type ProjectDraft = { service: string; location: string; description: string; files: File[] };
 
 export async function publishProject(client: SupabaseClient, businessId: string, draft: ProjectDraft): Promise<Project> {
   const projectId = crypto.randomUUID();
-  const title = draft.description ? `${draft.service} in ${draft.location}` : `${draft.service} in ${draft.location}`;
+  const title = `${draft.service} in ${draft.location}`;
   const slug = slugify(`${title}-${Date.now()}`);
   const paths = await Promise.all(draft.files.map((file) => uploadProjectImage(client, businessId, projectId, file)));
 

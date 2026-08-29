@@ -34,6 +34,14 @@ begin
 end;
 $$;
 
--- Only trusted server code (the service role, used exclusively in the
--- server-side /api/enquiries route) may allocate references.
-revoke all on function allocate_enquiry_reference(uuid) from public, anon, authenticated;
+-- Explicit, not implicit: PostgreSQL grants EXECUTE on a new function to
+-- PUBLIC by default, which every role (including service_role) inherits
+-- unless revoked. BUILD-08 revoked from public/anon/authenticated but
+-- never explicitly re-granted to service_role, which — once PUBLIC's
+-- default grant is revoked — leaves the server-side /api/enquiries route
+-- unable to call this function at all. Fixed here: revoke everything,
+-- then grant only to the one role that should ever call it.
+revoke all on function allocate_enquiry_reference(uuid) from public;
+revoke all on function allocate_enquiry_reference(uuid) from anon;
+revoke all on function allocate_enquiry_reference(uuid) from authenticated;
+grant execute on function allocate_enquiry_reference(uuid) to service_role;

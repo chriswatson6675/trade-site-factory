@@ -34,8 +34,16 @@ export async function getOwnerEnquiries(client: SupabaseClient, businessId: stri
   );
 }
 
+/**
+ * The client-side assertValidTransition() call is a fast-fail UX check
+ * only — transition_enquiry_status() (SECURITY DEFINER) is the actual
+ * authority: it re-validates the transition, confirms membership of the
+ * enquiry's business, and updates status only (no other column can be
+ * changed through it) — see supabase/migrations/20260829120300_rls_policies.sql.
+ * There is no direct UPDATE policy on enquiries for owners any more.
+ */
 export async function updateEnquiryStatus(client: SupabaseClient, enquiry: Enquiry, next: Status): Promise<void> {
   assertValidTransition(enquiry.status, next);
-  const { error } = await client.from('enquiries').update({ status: next }).eq('id', enquiry.id);
+  const { error } = await client.rpc('transition_enquiry_status', { p_enquiry_id: enquiry.id, p_new_status: next });
   if (error) throw new Error(`Could not update the enquiry: ${error.message}`);
 }

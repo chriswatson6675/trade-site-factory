@@ -3,7 +3,7 @@ import { updateBusinessAreas, updateBusinessDetails, updateBusinessServices } fr
 import { updateEnquiryStatus as updateEnquiryStatusRow } from './enquiry-repository';
 import type { OwnerAdapter } from './owner-adapter';
 import { deleteProject as deleteProjectRow, publishProject as publishProjectRow, updateProject as updateProjectRow } from './project-repository';
-import { storagePathFromPublicProjectImageUrl } from './storage-paths';
+import { storagePathFromSignedProjectImageUrl } from './storage-paths';
 
 /** Real, Supabase-backed OwnerAdapter — every write is scoped to `businessId` and enforced again by RLS server-side. */
 export function createSupabaseOwnerAdapter(client: SupabaseClient, businessId: string, supabaseUrl: string): OwnerAdapter {
@@ -29,7 +29,7 @@ export function createSupabaseOwnerAdapter(client: SupabaseClient, businessId: s
       const keptUrls = new Set(input.photos.filter((photo) => !photo.file).map((photo) => photo.url));
       const removedUrls = project.images.filter((url) => !keptUrls.has(url));
       const removeImagePaths = removedUrls
-        .map((url) => storagePathFromPublicProjectImageUrl(url, supabaseUrl))
+        .map((url) => storagePathFromSignedProjectImageUrl(url, supabaseUrl))
         .filter((path): path is string => Boolean(path));
       const addFiles = input.photos.filter((photo) => photo.file).map((photo) => photo.file!);
       return updateProjectRow(client, businessId, project, {

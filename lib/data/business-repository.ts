@@ -41,17 +41,15 @@ export async function getOwnerBusinesses(client: SupabaseClient): Promise<Busine
   );
 }
 
-export async function hasAnyMembership(client: SupabaseClient, userId: string): Promise<boolean> {
-  const { count, error } = await client
-    .from('business_members')
-    .select('business_id', { count: 'exact', head: true })
-    .eq('user_id', userId);
-  if (error) throw new Error(`Could not check memberships: ${error.message}`);
-  return (count ?? 0) > 0;
-}
-
-export async function claimBusiness(client: SupabaseClient, slug: string): Promise<void> {
-  const { error } = await client.rpc('claim_unclaimed_business', { p_slug: slug });
+/**
+ * Redeems a one-time claim token (see scripts/create-claim-link.ts) into a
+ * business_members row for the current authenticated user. A business slug
+ * is never sufficient on its own — see redeem_business_claim() in
+ * supabase/migrations/20260829120300_rls_policies.sql for the actual
+ * atomicity/expiry/single-use guarantees, all enforced in the database.
+ */
+export async function redeemBusinessClaim(client: SupabaseClient, token: string): Promise<void> {
+  const { error } = await client.rpc('redeem_business_claim', { p_token: token });
   if (error) throw new Error(error.message);
 }
 

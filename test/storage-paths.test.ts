@@ -4,7 +4,7 @@ import {
   enquiryImagePath,
   extensionForMimeType,
   projectImagePath,
-  storagePathFromPublicProjectImageUrl,
+  storagePathFromSignedProjectImageUrl,
 } from '../lib/data/storage-paths.ts';
 
 test('28 project image path is namespaced by business and project, with a UUID file name', () => {
@@ -31,12 +31,17 @@ test('32 known mime types map to their expected extension', () => {
   assert.equal(extensionForMimeType('IMAGE/JPEG'), 'jpg');
 });
 
-test('33 a public project image URL round-trips back to its storage path', () => {
-  const url = 'https://example.supabase.co/storage/v1/object/public/project-images/businesses/b/projects/p/id.jpg';
-  assert.equal(storagePathFromPublicProjectImageUrl(url, 'https://example.supabase.co'), 'businesses/b/projects/p/id.jpg');
+test('33 a signed project image URL round-trips back to its storage path, dropping the token', () => {
+  const url = 'https://example.supabase.co/storage/v1/object/sign/project-images/businesses/b/projects/p/id.jpg?token=abc.def';
+  assert.equal(storagePathFromSignedProjectImageUrl(url, 'https://example.supabase.co'), 'businesses/b/projects/p/id.jpg');
 });
 
 test('34 a URL from a different bucket/host does not resolve to a storage path', () => {
-  const url = 'https://attacker.example/storage/v1/object/public/project-images/x.jpg';
-  assert.equal(storagePathFromPublicProjectImageUrl(url, 'https://example.supabase.co'), null);
+  const url = 'https://attacker.example/storage/v1/object/sign/project-images/x.jpg?token=abc';
+  assert.equal(storagePathFromSignedProjectImageUrl(url, 'https://example.supabase.co'), null);
+});
+
+test('34b a public-style URL (bucket is now private) does not resolve to a storage path either', () => {
+  const url = 'https://example.supabase.co/storage/v1/object/public/project-images/businesses/b/projects/p/id.jpg';
+  assert.equal(storagePathFromSignedProjectImageUrl(url, 'https://example.supabase.co'), null);
 });

@@ -21,8 +21,18 @@ export const projectImagePath = (businessId: string, projectId: string, mimeType
 export const enquiryImagePath = (businessId: string, enquiryId: string, mimeType: string, id = crypto.randomUUID()) =>
   `businesses/${businessId}/enquiries/${enquiryId}/${id}.${extensionForMimeType(mimeType)}`;
 
-/** Recovers a project-images storage_path from its (public) URL, e.g. to know what to delete when a photo is removed in the edit UI. */
-export const storagePathFromPublicProjectImageUrl = (url: string, supabaseUrl: string): string | null => {
-  const prefix = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/project-images/`;
-  return url.startsWith(prefix) ? url.slice(prefix.length) : null;
+/**
+ * Recovers a project-images storage_path from one of its own signed URLs
+ * (project-images is a private bucket — see
+ * supabase/migrations/20260829120400_storage_buckets.sql — so every read
+ * is a signed URL, never a bucket-public one), so the owner "remove photo"
+ * flow knows what to delete. Signed URLs reliably embed the exact object
+ * path ahead of the query string: `.../object/sign/{bucket}/{path}?token=...`.
+ */
+export const storagePathFromSignedProjectImageUrl = (url: string, supabaseUrl: string): string | null => {
+  const prefix = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/sign/project-images/`;
+  if (!url.startsWith(prefix)) return null;
+  const rest = url.slice(prefix.length);
+  const queryIndex = rest.indexOf('?');
+  return queryIndex === -1 ? rest : rest.slice(0, queryIndex);
 };

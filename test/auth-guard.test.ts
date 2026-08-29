@@ -31,3 +31,8 @@ test('44 public site routes are not owner routes', () => {
 test('45 a path that merely contains "owner" elsewhere is not treated as an owner route', () => {
   assert.equal(isOwnerRoute('/sites/owner-builders-ltd'), false);
 });
+
+test('94 /owner/claim requires authentication like any other owner route — a claim token alone does not bypass sign-in', () => {
+  assert.equal(shouldRedirectToSignIn('/owner/claim', false), true);
+  assert.equal(shouldRedirectToSignIn('/owner/claim', true), false);
+});

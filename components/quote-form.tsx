@@ -13,12 +13,17 @@ const Button = ({ children, ...props }: ButtonProps) => (
   </button>
 );
 
-type Props = { business: Business; onSubmit: (draft: EnquiryDraft, photos: PhotoItem[]) => Promise<{ reference: string }> };
+type Props = {
+  business: Business;
+  onSubmit: (draft: EnquiryDraft, photos: PhotoItem[], honeypot: string) => Promise<{ reference: string }>;
+};
 
 /** Production quote form — posts through onSubmit (see components/production-quote-form.tsx → POST /api/enquiries). Demo mode keeps its own inline copy inside components/completion-app.tsx unchanged. */
 export function QuoteForm({ business, onSubmit }: Props) {
   const [form, setForm] = useState<EnquiryDraft>({ preferredContact: 'Phone' });
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  // Honeypot: invisible to a real visitor, filled in only by unattended bots that populate every field. A non-empty value is checked server-side too.
+  const [website, setWebsite] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [reference, setReference] = useState('');
@@ -33,7 +38,7 @@ export function QuoteForm({ business, onSubmit }: Props) {
     }
     setBusy(true);
     try {
-      const result = await onSubmit(form, photos);
+      const result = await onSubmit(form, photos, website);
       setReference(result.reference);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'We could not save your enquiry. Your details are still here—please try again.');
@@ -75,6 +80,10 @@ export function QuoteForm({ business, onSubmit }: Props) {
       <h1>Tell us about the job.</h1>
       <p>You don’t need to know scaffolding terminology.</p>
       <form onSubmit={submit}>
+        <div style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, overflow: 'hidden' }} aria-hidden="true">
+          <label htmlFor="website">Leave this field blank</label>
+          <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} />
+        </div>
         <fieldset>
           <legend>Your details</legend>
           <label>

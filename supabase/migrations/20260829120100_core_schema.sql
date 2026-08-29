@@ -2,6 +2,10 @@
 -- Supersedes the illustrative supabase/schema.sql — this migration set is the
 -- source of truth. Tenant isolation is enforced by business_id everywhere and
 -- by Row Level Security policies added in 20260829120300_rls_policies.sql.
+--
+-- Nothing in this migration set has ever been applied to a live project
+-- (see BUILD-09 hardening pass), so it is edited in place as a clean
+-- first-install chain rather than layering corrective migrations.
 
 create table businesses (
   id uuid primary key default gen_random_uuid(),
@@ -21,8 +25,10 @@ create table businesses (
 
 -- A Supabase Auth user must be explicitly linked to a business before they
 -- can act as its owner. Membership is never inferred from a slug or from
--- simply being authenticated — see claim_unclaimed_business() in the RLS
--- migration for the only controlled way to create a row here from the app.
+-- simply being authenticated — the only sanctioned way to create a row
+-- here is redeem_business_claim() (20260829120300_rls_policies.sql),
+-- which requires a one-time, hashed, expiring claim token minted out of
+-- band by scripts/create-claim-link.ts.
 create table business_members (
   business_id uuid not null references businesses(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -31,6 +37,30 @@ create table business_members (
   primary key (business_id, user_id)
 );
 create index business_members_user_idx on business_members(user_id);
+
+-- MVP: exactly one owner per business, enforced at the database level (not
+-- just in application code) — but scoped to role = 'owner' via a partial
+-- index rather than a plain unique(business_id), so a future 'staff' (or
+-- similar) role can be added to this same table later without requiring a
+-- schema change here.
+create unique index business_members_one_owner_per_business
+  on business_members(business_id)
+  where role = 'owner';
+
+-- One-time, hashed, expiring tokens that hand a business to its owner.
+-- The raw token is never stored — only its SHA-256 hash, computed
+-- identically by scripts/create-claim-link.ts (Node crypto, out of band)
+-- and by redeem_business_claim()'s use of pgcrypto's digest(). A public
+-- business slug alone is never sufficient to obtain ownership.
+create table business_claims (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  token_hash text unique not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index business_claims_business_idx on business_claims(business_id);
 
 create table services (
   id uuid primary key default gen_random_uuid(),
@@ -70,20 +100,25 @@ create table projects (
   published boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (business_id, slug)
+  unique (business_id, slug),
+  -- lets project_images below declare a composite FK, so the database
+  -- itself rejects an image row whose business_id doesn't match its
+  -- project's actual business_id (mission section 6) — not just app code.
+  unique (id, business_id)
 );
 create index projects_business_published_idx on projects(business_id, published);
 
 create table project_images (
   id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  -- denormalised for cheap RLS/path checks without a join to projects
-  business_id uuid not null references businesses(id) on delete cascade,
+  project_id uuid not null,
+  business_id uuid not null,
   storage_path text not null,
   sort_order integer not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  foreign key (project_id, business_id) references projects(id, business_id) on delete cascade
 );
 create index project_images_project_idx on project_images(project_id, sort_order);
+create index project_images_business_idx on project_images(business_id);
 
 create table testimonials (
   id uuid primary key default gen_random_uuid(),
@@ -134,20 +169,24 @@ create table enquiries (
   status text not null default 'new' check (status in ('new', 'contacted', 'quoted', 'won', 'lost')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (business_id, reference)
+  unique (business_id, reference),
+  -- composite FK anchor for enquiry_images, same rationale as projects above.
+  unique (id, business_id)
 );
 create index enquiries_business_status_idx on enquiries(business_id, status);
 create index enquiries_business_created_idx on enquiries(business_id, created_at desc);
 
 create table enquiry_images (
   id uuid primary key default gen_random_uuid(),
-  enquiry_id uuid not null references enquiries(id) on delete cascade,
-  business_id uuid not null references businesses(id) on delete cascade,
+  enquiry_id uuid not null,
+  business_id uuid not null,
   storage_path text not null,
   sort_order integer not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  foreign key (enquiry_id, business_id) references enquiries(id, business_id) on delete cascade
 );
 create index enquiry_images_enquiry_idx on enquiry_images(enquiry_id, sort_order);
+create index enquiry_images_business_idx on enquiry_images(business_id);
 
 -- updated_at maintenance -----------------------------------------------------
 create or replace function set_updated_at()

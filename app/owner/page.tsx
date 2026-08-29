@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { ClaimBusiness } from '../../components/claim-business';
 import { CompletionApp } from '../../components/completion-app';
 import { ConfigRequired } from '../../components/config-required';
+import { NotConnected } from '../../components/not-connected';
 import { OwnerAppBridge } from '../../components/owner-app-bridge';
 import { getOwnerBusinesses } from '../../lib/data/business-repository';
 import { getOwnerEnquiries } from '../../lib/data/enquiry-repository';
@@ -26,7 +26,7 @@ export default async function OwnerPage() {
   if (!user) redirect('/owner/sign-in');
 
   const businesses = await getOwnerBusinesses(supabase);
-  if (businesses.length === 0) return <ClaimBusiness />;
+  if (businesses.length === 0) return <NotConnected />;
 
   const business = businesses[0];
   const [projects, enquiries] = await Promise.all([getOwnerProjects(supabase, business.id), getOwnerEnquiries(supabase, business.id)]);

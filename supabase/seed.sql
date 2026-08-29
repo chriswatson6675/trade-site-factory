@@ -4,10 +4,12 @@
 -- guarded with on conflict / a not-exists check, so re-running it is a
 -- no-op rather than a duplicate-data error.
 --
--- This does NOT create the owner's business_members row: that happens the
--- first time a real person authenticates and calls claim_unclaimed_business
--- ('dee-valley-scaffolding') from the signed-in /owner flow, so ownership
--- is always an explicit action rather than something a migration grants.
+-- This does NOT create the owner's business_members row: that only ever
+-- happens via a one-time claim link — run, once Supabase is configured:
+--   node --experimental-strip-types scripts/create-claim-link.ts dee-valley-scaffolding
+-- and send the printed link to whoever should own this demo business, so
+-- ownership is always an explicit, token-gated action rather than
+-- something a migration (or a guessed slug) grants.
 
 insert into services (trade_type, name, slug) values
   ('scaffolding', 'Domestic scaffolding', 'domestic-scaffolding'),

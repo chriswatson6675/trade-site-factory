@@ -12,7 +12,10 @@ function createFakeClient(): { client: SupabaseClient; inserted: FakeCalls } {
     storage: {
       from: (bucket: string) => ({
         upload: async () => ({ error: null }),
-        getPublicUrl: (path: string) => ({ data: { publicUrl: `https://fake.supabase.co/storage/v1/object/public/${bucket}/${path}` } }),
+        createSignedUrls: async (paths: string[]) => ({
+          data: paths.map((path) => ({ path, signedUrl: `https://fake.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=fake` })),
+          error: null,
+        }),
       }),
     },
     from: (table: string) => {
