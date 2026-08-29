@@ -11,7 +11,7 @@
 // already exactly what RLS allows an authenticated owner to do (see
 // supabase/SECURITY.md), so there is no new privileged surface here beyond
 // the narrow mark_welcome_email_sent() RPC added by
-// supabase/migrations/20260829180000_owner_welcome_email.sql.
+// supabase/migrations/20260829182929_owner_welcome_email.sql.
 //
 // manageUrl/viewUrl are passed in already resolved (lib/site-url.ts) rather
 // than re-derived here, so the caller (which needs them for the success

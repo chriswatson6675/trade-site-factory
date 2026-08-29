@@ -21,7 +21,7 @@ const read = (relativePath: string) =>
 
 const seedSql = read('seed.sql');
 const hardenSql = read('migrations/20260829160000_harden_set_updated_at.sql');
-const welcomeEmailMigrationSql = read('migrations/20260829180000_owner_welcome_email.sql');
+const welcomeEmailMigrationSql = read('migrations/20260829182929_owner_welcome_email.sql');
 
 /** The single SQL statement that begins with `prefix`, up to and including its terminating `;`. */
 const statement = (sql: string, prefix: string) => {
@@ -93,7 +93,7 @@ test('129 set_updated_at is redefined with an explicit, safe search_path in the 
   assert.doesNotMatch(hardenSql, /create trigger/i);
 });
 
-test('130 the six real migrations already applied to the live project are unmodified', () => {
+test('130 the seven real migrations already applied to the live project are unmodified', () => {
   // Applied migrations are immutable history: if one of these hashes fails,
   // the fix is a NEW migration, not an edit — never re-point these hashes at
   // edited content to make the test pass.
@@ -104,6 +104,13 @@ test('130 the six real migrations already applied to the live project are unmodi
     ['20260829120300_rls_policies.sql', '365156882093c4f7c76cd0ca227684a8368d88af4da7a46ed9c68e380b66cbf1'],
     ['20260829120400_storage_buckets.sql', '6a4e9f5ec3d0b1d26c0817cc3f8d2c28753b943e4737458d9f892f7ae0b43dbc'],
     ['20260829160000_harden_set_updated_at.sql', '30676db8d1d8438458d2db947f2e042bd570c850b6c6ea2667b61a1a0eaa919a'],
+    // BUILD-15: confirmed applied to the live project — see the BUILD-15
+    // note below test 131. Applied via the Supabase management tool, which
+    // recorded remote version 20260829182929 (not this repo's original
+    // 20260829180000); the file was renamed to match (content byte-identical
+    // — only the filename/timestamp changed) rather than repairing remote
+    // history again so soon after BUILD-12's repair.
+    ['20260829182929_owner_welcome_email.sql', '657f8f0d25d9e0ca515a5bb3a33dcfda48c99a73a7a4fecdddd888b3c6552c94'],
   ];
 
   for (const [name, expectedHash] of appliedMigrations) {
@@ -137,12 +144,27 @@ test('131 the migration-history repair marker exists and is a genuine no-op (com
   assert.equal(stripped.trim(), '', 'nothing at all survives comment-stripping');
 });
 
-// BUILD-14 (TRADE-SITE-FACTORY-OWNER-HANDOFF-UX-14): the new welcome-email
-// migration is authored and content-checked here — same as test 129 was for
-// harden_set_updated_at — but deliberately NOT yet added to test 130's
-// hash-pinned "already applied" list. It only earns that pin once it's
-// actually confirmed live, exactly as harden_set_updated_at was pinned in a
-// later build than the one that introduced it.
+// BUILD-14 (TRADE-SITE-FACTORY-OWNER-HANDOFF-UX-14) introduced the
+// welcome-email migration and content-checked it here — same as test 129 did
+// for harden_set_updated_at. BUILD-15 (TRADE-SITE-FACTORY-OWNER-WELCOME-LIVE-15)
+// confirmed it applied to the live project (via the Supabase management
+// tool, under remote version 20260829182929, not this repo's original
+// 20260829180000 — the file was renamed to match, content byte-identical)
+// and added it to test 130's hash-pinned "already applied" list, exactly as
+// harden_set_updated_at was pinned in a later build than the one that
+// introduced it.
+
+test('159 the welcome-email migration file is named for its live-recorded version, 20260829182929, not the original local timestamp', () => {
+  assert.doesNotMatch(welcomeEmailMigrationSql, /^-- BUILD-14.*20260829180000/m);
+  // The file itself never needs to state its own filename, but nothing
+  // elsewhere in the repo should still point at the old one.
+  const repoFiles = ['../lib/data/welcome-email.ts', '../README.md'].map((relativePath) =>
+    readFileSync(new URL(relativePath, import.meta.url), 'utf8'),
+  );
+  for (const source of repoFiles) {
+    assert.doesNotMatch(source, /20260829180000_owner_welcome_email/);
+  }
+});
 
 test('146 welcome_email_sent_at is added to business_members, not a new table', () => {
   assert.match(welcomeEmailMigrationSql, /alter table business_members add column welcome_email_sent_at timestamptz/);
