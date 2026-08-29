@@ -167,3 +167,14 @@ test('83 the transition function truth table matches lib/domain\'s canTransition
     }
   }
 });
+
+test('154 (BUILD-14 regression guard) redeem_business_claim still creates the business_members row — unchanged, immutable history', () => {
+  // redeem_business_claim() itself is in the already-applied, immutable
+  // rls_policies.sql (test 130 in test/live-migration-state.test.ts pins its
+  // hash) — this just documents/guards the one fact BUILD-14's welcome-email
+  // flow depends on: a successful claim really does insert the membership
+  // row that mark_welcome_email_sent() later updates.
+  const body = rlsSql.slice(rlsSql.indexOf('create or replace function redeem_business_claim'), rlsSql.indexOf('revoke all on function redeem_business_claim'));
+  assert.match(body, /insert into public\.business_members \(business_id, user_id, role\)/);
+  assert.match(body, /values \(v_claim\.business_id, auth\.uid\(\), 'owner'\)/);
+});

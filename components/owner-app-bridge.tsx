@@ -6,10 +6,12 @@ import type { Business, Enquiry, Project } from '../lib/data/types';
 import { createClient } from '../lib/supabase/client';
 import { OwnerApp } from './owner-app';
 
-type Props = { businessId: string; business: Business; projects: Project[]; enquiries: Enquiry[] };
+type Props = { businessId: string; business: Business; projects: Project[]; enquiries: Enquiry[]; publicSiteUrl: string };
 
 /** Bridges the server-loaded initial data into a browser Supabase client + OwnerAdapter, since neither can cross the server/client boundary as props. */
-export function OwnerAppBridge({ businessId, business, projects, enquiries }: Props) {
+export function OwnerAppBridge({ businessId, business, projects, enquiries, publicSiteUrl }: Props) {
   const adapter = useMemo(() => createSupabaseOwnerAdapter(createClient(), businessId, supabaseUrl!), [businessId]);
-  return <OwnerApp mode="supabase" adapter={adapter} initialBusiness={business} initialProjects={projects} initialEnquiries={enquiries} />;
+  return (
+    <OwnerApp mode="supabase" adapter={adapter} initialBusiness={business} initialProjects={projects} initialEnquiries={enquiries} publicSiteUrl={publicSiteUrl} />
+  );
 }

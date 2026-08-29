@@ -2,9 +2,10 @@
 
 Written for BUILD-09 (TRADE-SITE-FACTORY-SUPABASE-HARDENING-09), revised for
 BUILD-10 (TRADE-SITE-FACTORY-PRE-LIVE-INTEGRITY-10), BUILD-11
-(TRADE-SITE-FACTORY-FIRST-LIVE-SYNC-11, the first live deployment) and
-BUILD-12 (TRADE-SITE-FACTORY-MIGRATION-HISTORY-MARKER-12). Re-run this
-checklist after any future change to `supabase/migrations/`.
+(TRADE-SITE-FACTORY-FIRST-LIVE-SYNC-11, the first live deployment), BUILD-12
+(TRADE-SITE-FACTORY-MIGRATION-HISTORY-MARKER-12) and BUILD-14
+(TRADE-SITE-FACTORY-OWNER-HANDOFF-UX-14). Re-run this checklist after any
+future change to `supabase/migrations/`.
 
 ## Live migration state (BUILD-11)
 
@@ -116,6 +117,7 @@ not the bare names.
 | `confirm_pending_enquiry(uuid, text)` **(new, BUILD-10)** | `service_role` only | N/A — only the trusted server can call it; the raw confirmation token itself is the authorisation (mission section 6: an enquiry UUID alone is never sufficient) | Row-locks the confirmation token (`for update`) before comparing hashes and before checking `confirmed_at`, so it can't be redeemed twice concurrently; deletes the token the instant it's consumed |
 | `is_legal_enquiry_transition(text, text)` | inherits default (pure predicate, no table access — no meaningful escalation surface) | N/A | Stateless truth table only |
 | `set_updated_at()` | N/A (trigger function, not `SECURITY DEFINER`, no direct grant surface, touches only `NEW`/`OLD`) | — | — (hardened in BUILD-11 with `set search_path = ''` — see *Live migration state* above; it was the sole genuine finding of the first live Security Advisor run) |
+| `mark_welcome_email_sent(uuid)` **(new, BUILD-14)** | `authenticated` only | `if auth.uid() is null then raise exception` | Can only ever touch `business_members` rows matching **both** `business_id = p_business_id` **and** `user_id = auth.uid()` — an owner can never mark (or infer anything about) another owner's delivery state. Grants no new privilege over `role` or any other column: the `update` sets only `welcome_email_sent_at`. The `and welcome_email_sent_at is null` guard makes a repeat call a genuine no-op (zero rows affected, `false` returned) rather than needing a separate read-then-write, so it's safe to call from a retry without any extra locking |
 
 **Token comparison note:** `redeem_business_claim` and
 `confirm_pending_enquiry` compare **hashes** (`token_hash = encode(extensions.digest(p_token,'sha256'),'hex')`),
@@ -133,7 +135,7 @@ comparing a password directly.
 | Table | Public (anon) | Authenticated owner | Notes |
 |---|---|---|---|
 | `businesses` | SELECT, `site_status = 'published'` only | SELECT/UPDATE own (`is_business_member`) | No public INSERT/DELETE ever |
-| `business_members` | none | SELECT own row only | No INSERT/UPDATE/DELETE policy for anyone — only `redeem_business_claim()` writes here |
+| `business_members` | none | SELECT own row only | No INSERT/UPDATE/DELETE policy for anyone — only `redeem_business_claim()` (insert) and, since BUILD-14, `mark_welcome_email_sent()` (update, `welcome_email_sent_at` only) write here |
 | `business_claims` | none | none | No policy at all in either direction — only the service-role admin script (insert) and `redeem_business_claim()` (select/update) ever touch it |
 | `services` | SELECT (shared catalogue) | SELECT | Not tenant data |
 | `business_services` | SELECT if business published | SELECT/ALL own | |
@@ -197,3 +199,35 @@ Instead:
   directly) into a real scheduler — Supabase Cron, Vercel Cron, or a
   GitHub Actions scheduled workflow are all reasonable choices — instead
   of relying on someone remembering to run it.
+
+## Owner welcome email (BUILD-14)
+
+The first successful ownership claim triggers a one-time welcome email
+(`lib/data/welcome-email.ts`) containing exactly two permanent links —
+never the one-time claim link, never any Supabase/Vercel-internal detail.
+Security-relevant properties:
+
+- **The claim link and the welcome email are fully decoupled.** Ownership
+  is granted entirely by `redeem_business_claim()` (unchanged, immutable
+  history); the email is a best-effort side effect attempted afterwards.
+  A failed send never rolls back a valid claim, and a successful send never
+  requires re-presenting a claim token — see `mark_welcome_email_sent()`
+  above.
+- **`welcome_email_sent_at` is written only through
+  `mark_welcome_email_sent()`**, never a direct table write, consistent
+  with `business_members` having no standing UPDATE policy for anyone.
+- **`RESEND_API_KEY` (and the optional `OWNER_EMAIL_FROM`) are server-side
+  only** (`lib/email/resend.ts` throws if imported into a browser bundle,
+  mirroring `lib/supabase/service.ts`'s own guard) and are never logged.
+  `lib/email/resend.ts` also caps any Resend error body it logs to 300
+  characters, so a malformed/unexpected API response can't flood logs with
+  attacker-controlled content.
+- **The email itself carries no secret.** `lib/email/welcome-email.ts`'s
+  content builder takes only a business name and the two already-public-ish
+  permanent URLs as input — there is no code path by which a claim token,
+  a Supabase key, or a Vercel deployment detail could end up in it. See
+  `test/welcome-email.test.ts` for the content assertions this is held to.
+- **No new anonymous read/write surface.** `ensureOwnerWelcomeEmailSent()`
+  (`lib/data/welcome-email.ts`) runs with the caller's own authenticated,
+  RLS-scoped Supabase client — the same one every other owner-facing read
+  in this app already uses — not the service role.

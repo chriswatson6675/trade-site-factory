@@ -27,9 +27,11 @@ type Props = {
   initialBusiness: Business;
   initialProjects: Project[];
   initialEnquiries: Enquiry[];
+  /** Permanent customer-facing website URL — already resolved (custom domain preferred, falling back to /sites/<slug>) by app/owner/page.tsx via lib/site-url.ts. Never build a /sites/<slug> URL directly in this file. */
+  publicSiteUrl: string;
 };
 
-export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, initialEnquiries }: Props) {
+export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, initialEnquiries, publicSiteUrl }: Props) {
   const [business, setBusiness] = useState(initialBusiness);
   const [projects, setProjects] = useState(initialProjects);
   const [enquiries, setEnquiries] = useState(initialEnquiries);
@@ -159,7 +161,7 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
 
   if (view === 'add')
     return (
-      <OwnerPage mode={mode} error={error}>
+      <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
         <Back onClick={() => setView('home')} />
         <h1>Add today’s job</h1>
         <p>Just the facts. Your website handles the rest.</p>
@@ -198,7 +200,7 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
 
   if (view === 'live' && selected)
     return (
-      <OwnerPage mode={mode} extra="success-page">
+      <OwnerPage mode={mode} extra="success-page" publicSiteUrl={publicSiteUrl}>
         <h1>Your job is live</h1>
         <p>It now appears automatically on your website.</p>
         <Link className="btn" href={`/sites/${business.slug}/projects/${selected.slug}`}>
@@ -215,7 +217,7 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
 
   if (view === 'jobs')
     return (
-      <OwnerPage mode={mode} error={error}>
+      <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
         <Back onClick={() => setView('home')} />
         <h1>My jobs</h1>
         <div className="job-list">
@@ -239,7 +241,7 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
 
   if (view === 'edit' && selected)
     return (
-      <OwnerPage mode={mode} error={error}>
+      <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
         <Back onClick={() => setView('jobs')} />
         <h1>Edit job</h1>
         <label>
@@ -275,7 +277,9 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
     );
 
   if (view === 'details')
-    return <BusinessDetails business={business} busy={busy} saveBusiness={saveBusiness} onBack={() => setView('home')} mode={mode} error={error} />;
+    return (
+      <BusinessDetails business={business} busy={busy} saveBusiness={saveBusiness} onBack={() => setView('home')} mode={mode} error={error} publicSiteUrl={publicSiteUrl} />
+    );
 
   if (view === 'enquiries')
     return (
@@ -286,11 +290,12 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
         onBack={() => setView('home')}
         mode={mode}
         error={error}
+        publicSiteUrl={publicSiteUrl}
       />
     );
 
   return (
-    <OwnerPage mode={mode} error={error}>
+    <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
       <h1>Your website</h1>
       <button className="big-action" onClick={startAdd}>
         + ADD TODAY’S JOB
@@ -303,7 +308,6 @@ export function OwnerApp({ mode, adapter, initialBusiness, initialProjects, init
           MY JOBS <b>{projects.length}</b>
         </button>
         <button onClick={() => setView('details')}>BUSINESS DETAILS</button>
-        <Link href={`/sites/${business.slug}`}>VIEW WEBSITE ↗</Link>
       </div>
     </OwnerPage>
   );
@@ -314,15 +318,25 @@ function OwnerPage({
   extra = '',
   mode,
   error,
+  publicSiteUrl,
 }: {
   children: React.ReactNode;
   extra?: string;
   mode: 'demo' | 'supabase';
   error?: string;
+  publicSiteUrl: string;
 }) {
   return (
     <main className={`owner ${extra}`}>
       <p className="demo">{mode === 'demo' ? 'DEMO MODE · YOUR WEBSITE' : 'YOUR WEBSITE'}</p>
+      {/* Obvious, permanent way for the owner to see what customers see —
+          mission section 6. Present on every /owner view, not just the
+          home screen, and never the one-time claim link. */}
+      <div className="owner-topbar">
+        <a className="btn outline" href={publicSiteUrl} target="_blank" rel="noreferrer">
+          VIEW MY WEBSITE ↗
+        </a>
+      </div>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -340,12 +354,14 @@ function BusinessDetails({
   onBack,
   mode,
   error,
+  publicSiteUrl,
 }: {
   business: Business;
   busy: boolean;
   saveBusiness: (business: Business) => Promise<void>;
   onBack: () => void;
   mode: 'demo' | 'supabase';
+  publicSiteUrl: string;
   error: string;
 }) {
   const [draft, setDraft] = useState(business);
@@ -354,7 +370,7 @@ function BusinessDetails({
     if (JSON.stringify(draft) !== JSON.stringify(business)) void saveBusiness(draft);
   };
   return (
-    <OwnerPage mode={mode} error={error}>
+    <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
       <Back onClick={onBack} />
       <h1>Business details</h1>
       <label>
@@ -434,6 +450,7 @@ function OwnerEnquiries({
   onBack,
   mode,
   error,
+  publicSiteUrl,
 }: {
   business: Business;
   enquiries: Enquiry[];
@@ -441,9 +458,10 @@ function OwnerEnquiries({
   onBack: () => void;
   mode: 'demo' | 'supabase';
   error: string;
+  publicSiteUrl: string;
 }) {
   return (
-    <OwnerPage mode={mode} error={error}>
+    <OwnerPage mode={mode} error={error} publicSiteUrl={publicSiteUrl}>
       <Back onClick={onBack} />
       <h1>New enquiries</h1>
       <div className="enquiry-list">

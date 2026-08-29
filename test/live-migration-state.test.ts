@@ -21,6 +21,7 @@ const read = (relativePath: string) =>
 
 const seedSql = read('seed.sql');
 const hardenSql = read('migrations/20260829160000_harden_set_updated_at.sql');
+const welcomeEmailMigrationSql = read('migrations/20260829180000_owner_welcome_email.sql');
 
 /** The single SQL statement that begins with `prefix`, up to and including its terminating `;`. */
 const statement = (sql: string, prefix: string) => {
@@ -134,4 +135,41 @@ test('131 the migration-history repair marker exists and is a genuine no-op (com
   assert.doesNotMatch(stripped, /\$\$/, 'no function bodies hiding statements');
   assert.doesNotMatch(stripped, /;/, 'no statement terminators outside comments');
   assert.equal(stripped.trim(), '', 'nothing at all survives comment-stripping');
+});
+
+// BUILD-14 (TRADE-SITE-FACTORY-OWNER-HANDOFF-UX-14): the new welcome-email
+// migration is authored and content-checked here — same as test 129 was for
+// harden_set_updated_at — but deliberately NOT yet added to test 130's
+// hash-pinned "already applied" list. It only earns that pin once it's
+// actually confirmed live, exactly as harden_set_updated_at was pinned in a
+// later build than the one that introduced it.
+
+test('146 welcome_email_sent_at is added to business_members, not a new table', () => {
+  assert.match(welcomeEmailMigrationSql, /alter table business_members add column welcome_email_sent_at timestamptz/);
+});
+
+test('147 mark_welcome_email_sent has an explicit safe search_path and an auth check', () => {
+  const body = welcomeEmailMigrationSql.slice(
+    welcomeEmailMigrationSql.indexOf('create or replace function mark_welcome_email_sent'),
+  );
+  assert.match(body, /set search_path = ''/);
+  assert.doesNotMatch(body, /set search_path = public\b/);
+  assert.match(body, /if auth\.uid\(\) is null then\s*\n\s*raise exception 'authentication required'/);
+});
+
+test('148 mark_welcome_email_sent can only ever touch the caller\'s own membership row for the given business', () => {
+  const body = welcomeEmailMigrationSql.slice(
+    welcomeEmailMigrationSql.indexOf('create or replace function mark_welcome_email_sent'),
+  );
+  assert.match(body, /where business_id = p_business_id\s*\n\s*and user_id = auth\.uid\(\)/);
+  // The is-null guard is what makes a repeat call a genuine no-op rather
+  // than needing separate locking for the retry case.
+  assert.match(body, /and welcome_email_sent_at is null/);
+});
+
+test('149 mark_welcome_email_sent is granted to authenticated only, never anon/public', () => {
+  assert.match(welcomeEmailMigrationSql, /grant execute on function mark_welcome_email_sent\(uuid\) to authenticated/);
+  assert.doesNotMatch(welcomeEmailMigrationSql, /grant execute on function mark_welcome_email_sent\(uuid\) to (anon|public)/);
+  assert.match(welcomeEmailMigrationSql, /revoke all on function mark_welcome_email_sent\(uuid\) from public/);
+  assert.match(welcomeEmailMigrationSql, /revoke all on function mark_welcome_email_sent\(uuid\) from anon/);
 });

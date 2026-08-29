@@ -21,7 +21,10 @@ export function ClaimRedeem({ token }: { token: string }) {
     let cancelled = false;
     redeemBusinessClaim(createClient(), token)
       .then(() => {
-        if (!cancelled) router.replace('/owner');
+        // ?claimed=1 tells app/owner/page.tsx to show the first-time
+        // success screen (mission section 5) instead of the normal
+        // dashboard — see components/owner-claim-success.tsx.
+        if (!cancelled) router.replace('/owner?claimed=1');
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
